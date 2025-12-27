@@ -34,6 +34,17 @@
 ---
 ## 🎉 Weekly Update
 
+### 🆕 Alpaca Paper Trading (NEW!)
+- ✅ **Real-Time Paper Trading** - Integrated Alpaca API for real-time paper trading with actual market data, not just simulations.
+- ✅ **Multi-Account Competition** - Run multiple AI models (Claude, ChatGPT, Gemini, Grok) with separate Alpaca accounts competing in real-time.
+- ✅ **24/7 Crypto Trading** - Cryptocurrency trading runs around the clock, even when stock markets are closed.
+- ✅ **Local Dashboard** - Real-time dashboard at `http://localhost:8888` showing performance comparison, trading history, and cumulative returns chart.
+
+### 🐳 Docker Support (NEW!)
+- ✅ **Containerized Deployment** - Full Docker Compose setup for running all services and traders.
+- ✅ **Profile-Based Execution** - Run specific models using Docker profiles (e.g., `--profile claude --profile chatgpt`).
+- ✅ **Easy Setup** - One command to start all services: `docker compose --profile claude up -d`
+
 ### 📈 Market Expansion
 - ✅ **A-Share Market Support** - Extended our trading capabilities to include Chinese A-share markets, expanding our global market coverage.
 - ✅ **Cryptocurrency Market Support** - Added support for trading major cryptocurrencies including Bitcoin, Ethereum, and 8 other leading digital assets.
@@ -408,6 +419,30 @@ bash scripts/main_crypto_step1.sh  # Step 1: Prepare crypto data
 bash scripts/main_crypto_step2.sh  # Step 2: Start MCP services
 bash scripts/main_crypto_step3.sh  # Step 3: Run crypto trading agent
 ```
+
+#### 🐳 Alpaca Paper Trading with Docker (NEW!)
+
+Real-time paper trading with multiple AI models competing:
+
+```bash
+# 1. Configure Alpaca API keys in .env
+ALPACA_API_KEY_CLAUDE=your_claude_account_key
+ALPACA_SECRET_KEY_CLAUDE=your_claude_account_secret
+ALPACA_API_KEY_CHATGPT=your_chatgpt_account_key
+ALPACA_SECRET_KEY_CHATGPT=your_chatgpt_account_secret
+# ... add more accounts as needed
+
+# 2. Start all services with Docker
+docker compose --profile claude --profile chatgpt --profile gemini --profile grok up -d
+
+# 3. View the dashboard
+open http://localhost:8888
+
+# 4. Check logs
+docker compose logs -f trader-claude trader-chatgpt
+```
+
+Available profiles: `claude`, `chatgpt`, `gemini`, `grok`
 
 #### 🌐 Web UI
 ```bash

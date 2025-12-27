@@ -1,0 +1,376 @@
+services:
+  # MCP Math Service
+  mcp-math:
+    build: .
+    command: python agent_tools/tool_math.py
+    environment:
+      - MATH_HTTP_PORT=8000
+      - MCP_HOST=0.0.0.0
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # MCP Search Service
+  mcp-search:
+    build: .
+    command: python agent_tools/tool_jina_search.py
+    environment:
+      - SEARCH_HTTP_PORT=8001
+      - MCP_HOST=0.0.0.0
+      - JINA_API_KEY=${JINA_API_KEY}
+      - ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  # Alpaca Price Service
+  alpaca-price:
+    build: .
+    command: python agent_tools/tool_get_price_alpaca.py
+    environment:
+      - ALPACA_PRICE_PORT=8010
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER=true
+    ports:
+      - "8010:8010"
+    restart: unless-stopped
+
+  # Alpaca Trade Service
+  alpaca-trade:
+    build: .
+    command: python agent_tools/tool_trade_alpaca.py
+    environment:
+      - ALPACA_TRADE_PORT=8011
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER=true
+    ports:
+      - "8011:8011"
+    restart: unless-stopped
+
+  # Claude Opus 4.5 - Dedicated Crypto Trader (24/7)
+  trader-claude:
+    build: .
+    command: python main_alpaca.py configs/claude_opus_crypto.json --scheduled
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - ANTHROPIC_API_KEY=${CLAUDE_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CLAUDE}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CLAUDE}
+      - ALPACA_PAPER=${ALPACA_PAPER_CLAUDE:-true}
+      # MCP service hosts (Docker service names)
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price-claude
+      - MCP_TRADE_HOST=alpaca-trade-claude
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price-claude
+      - alpaca-trade-claude
+    restart: unless-stopped
+    profiles:
+      - claude
+
+  # Alpaca Price Service for Claude (internal only, no port mapping)
+  alpaca-price-claude:
+    build: .
+    command: python agent_tools/tool_get_price_alpaca.py
+    environment:
+      - ALPACA_PRICE_PORT=8010
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CLAUDE}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CLAUDE}
+      - ALPACA_PAPER=${ALPACA_PAPER_CLAUDE:-true}
+    restart: unless-stopped
+    profiles:
+      - claude
+
+  # Alpaca Trade Service for Claude (internal only, no port mapping)
+  alpaca-trade-claude:
+    build: .
+    command: python agent_tools/tool_trade_alpaca.py
+    environment:
+      - ALPACA_TRADE_PORT=8011
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CLAUDE}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CLAUDE}
+      - ALPACA_PAPER=${ALPACA_PAPER_CLAUDE:-true}
+    restart: unless-stopped
+    profiles:
+      - claude
+
+  # ========== ChatGPT 5.2 Trader ==========
+  trader-chatgpt:
+    build: .
+    command: python main_alpaca.py configs/chatgpt_crypto.json --scheduled
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CHATGPT}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CHATGPT}
+      - ALPACA_PAPER=${ALPACA_PAPER_CHATGPT:-true}
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price-chatgpt
+      - MCP_TRADE_HOST=alpaca-trade-chatgpt
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price-chatgpt
+      - alpaca-trade-chatgpt
+    restart: unless-stopped
+    profiles:
+      - chatgpt
+
+  alpaca-price-chatgpt:
+    build: .
+    command: python agent_tools/tool_get_price_alpaca.py
+    environment:
+      - ALPACA_PRICE_PORT=8010
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CHATGPT}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CHATGPT}
+      - ALPACA_PAPER=${ALPACA_PAPER_CHATGPT:-true}
+    restart: unless-stopped
+    profiles:
+      - chatgpt
+
+  alpaca-trade-chatgpt:
+    build: .
+    command: python agent_tools/tool_trade_alpaca.py
+    environment:
+      - ALPACA_TRADE_PORT=8011
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_CHATGPT}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_CHATGPT}
+      - ALPACA_PAPER=${ALPACA_PAPER_CHATGPT:-true}
+    restart: unless-stopped
+    profiles:
+      - chatgpt
+
+  # ========== Gemini 3 Pro Trader ==========
+  trader-gemini:
+    build: .
+    command: python main_alpaca.py configs/gemini_crypto.json --scheduled
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GEMINI}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GEMINI}
+      - ALPACA_PAPER=${ALPACA_PAPER_GEMINI:-true}
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price-gemini
+      - MCP_TRADE_HOST=alpaca-trade-gemini
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price-gemini
+      - alpaca-trade-gemini
+    restart: unless-stopped
+    profiles:
+      - gemini
+
+  alpaca-price-gemini:
+    build: .
+    command: python agent_tools/tool_get_price_alpaca.py
+    environment:
+      - ALPACA_PRICE_PORT=8010
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GEMINI}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GEMINI}
+      - ALPACA_PAPER=${ALPACA_PAPER_GEMINI:-true}
+    restart: unless-stopped
+    profiles:
+      - gemini
+
+  alpaca-trade-gemini:
+    build: .
+    command: python agent_tools/tool_trade_alpaca.py
+    environment:
+      - ALPACA_TRADE_PORT=8011
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GEMINI}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GEMINI}
+      - ALPACA_PAPER=${ALPACA_PAPER_GEMINI:-true}
+    restart: unless-stopped
+    profiles:
+      - gemini
+
+  # ========== Grok 4.2 Trader ==========
+  trader-grok:
+    build: .
+    command: python main_alpaca.py configs/grok_crypto.json --scheduled
+    environment:
+      - GROK_API_KEY=${GROK_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GROK}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GROK}
+      - ALPACA_PAPER=${ALPACA_PAPER_GROK:-true}
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price-grok
+      - MCP_TRADE_HOST=alpaca-trade-grok
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price-grok
+      - alpaca-trade-grok
+    restart: unless-stopped
+    profiles:
+      - grok
+
+  alpaca-price-grok:
+    build: .
+    command: python agent_tools/tool_get_price_alpaca.py
+    environment:
+      - ALPACA_PRICE_PORT=8010
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GROK}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GROK}
+      - ALPACA_PAPER=${ALPACA_PAPER_GROK:-true}
+    restart: unless-stopped
+    profiles:
+      - grok
+
+  alpaca-trade-grok:
+    build: .
+    command: python agent_tools/tool_trade_alpaca.py
+    environment:
+      - ALPACA_TRADE_PORT=8011
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY_GROK}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY_GROK}
+      - ALPACA_PAPER=${ALPACA_PAPER_GROK:-true}
+    restart: unless-stopped
+    profiles:
+      - grok
+
+  # AI Trading Agent - Compare Mode (run once)
+  trader-compare:
+    build: .
+    command: python main_alpaca.py configs/alpaca_crypto_config.json --compare
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GROK_API_KEY=${GROK_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER=true
+      - ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}
+      # MCP service hosts (Docker service names)
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price
+      - MCP_TRADE_HOST=alpaca-trade
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price
+      - alpaca-trade
+    profiles:
+      - compare
+
+  # Single model trading
+  trader-single:
+    build: .
+    command: python main_alpaca.py configs/alpaca_crypto_config.json
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GROK_API_KEY=${GROK_API_KEY}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_PAPER=true
+      - ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}
+      # MCP service hosts (Docker service names)
+      - MCP_MATH_HOST=mcp-math
+      - MCP_SEARCH_HOST=mcp-search
+      - MCP_PRICE_HOST=alpaca-price
+      - MCP_TRADE_HOST=alpaca-trade
+      - MATH_HTTP_PORT=8000
+      - SEARCH_HTTP_PORT=8001
+      - ALPACA_PRICE_PORT=8010
+      - ALPACA_TRADE_PORT=8011
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - mcp-math
+      - mcp-search
+      - alpaca-price
+      - alpaca-trade
+    profiles:
+      - single
+
+  # Real-time Trading Dashboard - Multi-Account Comparison
+  dashboard:
+    build: .
+    command: python dashboard/app.py
+    environment:
+      - DASHBOARD_PORT=8888
+      - FLASK_DEBUG=false
+      # Claude Account
+      - ALPACA_API_KEY_CLAUDE=${ALPACA_API_KEY_CLAUDE}
+      - ALPACA_SECRET_KEY_CLAUDE=${ALPACA_SECRET_KEY_CLAUDE}
+      - ALPACA_PAPER_CLAUDE=${ALPACA_PAPER_CLAUDE:-true}
+      # ChatGPT Account
+      - ALPACA_API_KEY_CHATGPT=${ALPACA_API_KEY_CHATGPT}
+      - ALPACA_SECRET_KEY_CHATGPT=${ALPACA_SECRET_KEY_CHATGPT}
+      - ALPACA_PAPER_CHATGPT=${ALPACA_PAPER_CHATGPT:-true}
+      # Gemini Account
+      - ALPACA_API_KEY_GEMINI=${ALPACA_API_KEY_GEMINI}
+      - ALPACA_SECRET_KEY_GEMINI=${ALPACA_SECRET_KEY_GEMINI}
+      - ALPACA_PAPER_GEMINI=${ALPACA_PAPER_GEMINI:-true}
+      # Grok Account
+      - ALPACA_API_KEY_GROK=${ALPACA_API_KEY_GROK}
+      - ALPACA_SECRET_KEY_GROK=${ALPACA_SECRET_KEY_GROK}
+      - ALPACA_PAPER_GROK=${ALPACA_PAPER_GROK:-true}
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+networks:
+  default:
+    name: ai-trader-network

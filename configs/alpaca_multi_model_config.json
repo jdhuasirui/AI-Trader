@@ -1,0 +1,64 @@
+{
+  "agent_type": "AlpacaAgent",
+  "market": "us",
+  "trading_mode": "paper",
+  "description": "Multi-model comparison with latest AI models",
+
+  "models": [
+    {
+      "name": "gpt-4.5-preview",
+      "basemodel": "gpt-4.5-preview",
+      "signature": "gpt-4.5-compare",
+      "enabled": true,
+      "openai_api_key_env": "OPENAI_API_KEY"
+    },
+    {
+      "name": "claude-opus-4.5",
+      "basemodel": "claude-opus-4-5-20251101",
+      "signature": "claude-opus-4.5-compare",
+      "enabled": true,
+      "openai_base_url": "https://api.anthropic.com/v1",
+      "openai_api_key_env": "CLAUDE_API_KEY"
+    },
+    {
+      "name": "gemini-2.5-pro",
+      "basemodel": "gemini-2.5-pro-preview-06-05",
+      "signature": "gemini-2.5-pro-compare",
+      "enabled": true,
+      "openai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "openai_api_key_env": "GEMINI_API_KEY"
+    },
+    {
+      "name": "gemini-2.5-flash",
+      "basemodel": "gemini-2.5-flash-preview-05-20",
+      "signature": "gemini-2.5-flash-compare",
+      "enabled": true,
+      "openai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "openai_api_key_env": "GEMINI_API_KEY"
+    }
+  ],
+
+  "agent_config": {
+    "max_steps": 15,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "check_market_hours": false,
+    "verbose": false
+  },
+
+  "risk_config": {
+    "max_position_pct": 0.25,
+    "max_order_value": 5000,
+    "daily_loss_limit": 500
+  },
+
+  "stock_symbols": [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "META", "TSLA", "AVGO", "AMD", "NFLX"
+  ],
+
+  "log_config": {
+    "log_path": "./data/agent_data_alpaca",
+    "save_trades": true
+  }
+}

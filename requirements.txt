@@ -1,8 +1,17 @@
 langchain==1.0.2
 langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
+langchain-anthropic>=0.3.0
+langchain-google-genai>=2.0.0
 fastmcp==2.12.5
 
 # A_stock
 tushare
 efinance
+
+# Alpaca Paper Trading
+alpaca-py>=0.13.0
+
+# Dashboard
+flask>=3.0.0
+flask-cors>=4.0.0

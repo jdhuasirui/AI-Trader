@@ -377,9 +377,11 @@ class BaseAgent:
             )
 
         try:
-            # Create AI model - use custom DeepSeekChatOpenAI for DeepSeek models
-            # to handle tool_calls.args format differences (JSON string vs dict)
-            if "deepseek" in self.basemodel.lower():
+            # Create AI model based on model type
+            model_lower = self.basemodel.lower()
+
+            if "deepseek" in model_lower:
+                # DeepSeek models - use custom wrapper for tool_calls compatibility
                 self.model = DeepSeekChatOpenAI(
                     model=self.basemodel,
                     base_url=self.openai_base_url,
@@ -387,7 +389,55 @@ class BaseAgent:
                     max_retries=3,
                     timeout=30,
                 )
+            elif "claude" in model_lower or "anthropic" in model_lower:
+                # Claude/Anthropic models - use native ChatAnthropic
+                try:
+                    from langchain_anthropic import ChatAnthropic
+                    self.model = ChatAnthropic(
+                        model=self.basemodel,
+                        api_key=self.openai_api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY"),
+                        max_retries=3,
+                        timeout=30,
+                    )
+                except ImportError:
+                    print("⚠️ langchain-anthropic not installed, falling back to OpenAI wrapper")
+                    self.model = ChatOpenAI(
+                        model=self.basemodel,
+                        base_url=self.openai_base_url,
+                        api_key=self.openai_api_key,
+                        max_retries=3,
+                        timeout=30,
+                    )
+            elif "gemini" in model_lower:
+                # Google Gemini models - use native ChatGoogleGenerativeAI
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    self.model = ChatGoogleGenerativeAI(
+                        model=self.basemodel,
+                        google_api_key=self.openai_api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+                        max_retries=3,
+                        timeout=30,
+                    )
+                except ImportError:
+                    print("⚠️ langchain-google-genai not installed, falling back to OpenAI wrapper")
+                    self.model = ChatOpenAI(
+                        model=self.basemodel,
+                        base_url=self.openai_base_url,
+                        api_key=self.openai_api_key,
+                        max_retries=3,
+                        timeout=30,
+                    )
+            elif "grok" in model_lower:
+                # Grok models (xAI) - OpenAI-compatible API
+                self.model = ChatOpenAI(
+                    model=self.basemodel,
+                    base_url=self.openai_base_url or "https://api.x.ai/v1",
+                    api_key=self.openai_api_key or os.getenv("GROK_API_KEY"),
+                    max_retries=3,
+                    timeout=30,
+                )
             else:
+                # Default: OpenAI-compatible models (GPT, etc.)
                 self.model = ChatOpenAI(
                     model=self.basemodel,
                     base_url=self.openai_base_url,

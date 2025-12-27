@@ -41,4 +41,5 @@ def multiply(a: float, b: float) -> float:
 
 if __name__ == "__main__":
     port = int(os.getenv("MATH_HTTP_PORT", "8000"))
-    mcp.run(transport="streamable-http", port=port)
+    host = os.getenv("MCP_HOST", "127.0.0.1")  # Use 0.0.0.0 for Docker
+    mcp.run(transport="streamable-http", host=host, port=port)

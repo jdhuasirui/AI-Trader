@@ -705,6 +705,7 @@ function updateMarketUI() {
     const currentMarket = dataLoader.getMarket();
     const usBtn = document.getElementById('usMarketBtn');
     const cnBtn = document.getElementById('cnMarketBtn');
+    const cryptoBtn = document.getElementById('cryptoMarketBtn');
     const granularityWrapper = document.getElementById('granularityWrapper');
     const dailyBtn = document.getElementById('dailyBtn');
     const hourlyBtn = document.getElementById('hourlyBtn');
@@ -712,24 +713,28 @@ function updateMarketUI() {
     // Reset all active states
     if (usBtn) usBtn.classList.remove('active');
     if (cnBtn) cnBtn.classList.remove('active');
+    if (cryptoBtn) cryptoBtn.classList.remove('active');
     if (dailyBtn) dailyBtn.classList.remove('active');
     if (hourlyBtn) hourlyBtn.classList.remove('active');
 
     if (currentMarket === 'us') {
         if (usBtn) usBtn.classList.add('active');
         if (granularityWrapper) granularityWrapper.classList.add('hidden');
+    } else if (currentMarket === 'crypto') {
+        if (cryptoBtn) cryptoBtn.classList.add('active');
+        if (granularityWrapper) granularityWrapper.classList.add('hidden');
     } else {
         // Both 'cn' and 'cn_hour' keep the main CN button active
         if (cnBtn) cnBtn.classList.add('active');
         if (granularityWrapper) granularityWrapper.classList.remove('hidden');
-        
+
         if (currentMarket === 'cn_hour') {
             if (hourlyBtn) hourlyBtn.classList.add('active');
         } else {
             if (dailyBtn) dailyBtn.classList.add('active');
         }
     }
-    
+
     updateMarketSubtitle();
 }
 
@@ -741,7 +746,8 @@ function setupEventListeners() {
     // Market switching
     const usMarketBtn = document.getElementById('usMarketBtn');
     const cnMarketBtn = document.getElementById('cnMarketBtn');
-    
+    const cryptoMarketBtn = document.getElementById('cryptoMarketBtn');
+
     // Granularity switching
     const dailyBtn = document.getElementById('dailyBtn');
     const hourlyBtn = document.getElementById('hourlyBtn');
@@ -762,6 +768,16 @@ function setupEventListeners() {
             // If not currently in any CN mode, switch to default CN (Hourly)
             if (current !== 'cn' && current !== 'cn_hour') {
                 dataLoader.setMarket('cn_hour');
+                updateMarketUI();
+                await loadDataAndRefresh();
+            }
+        });
+    }
+
+    if (cryptoMarketBtn) {
+        cryptoMarketBtn.addEventListener('click', async () => {
+            if (dataLoader.getMarket() !== 'crypto') {
+                dataLoader.setMarket('crypto');
                 updateMarketUI();
                 await loadDataAndRefresh();
             }

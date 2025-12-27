@@ -1,0 +1,53 @@
+{
+    "agent_type": "AlpacaAgent",
+    "market": "crypto",
+    "trading_mode": "paper",
+    "description": "ChatGPT 5.2 - Crypto Trading (24/7)",
+
+    "models": [
+        {
+            "name": "chatgpt-5.2",
+            "basemodel": "gpt-5.2",
+            "signature": "chatgpt-5.2-crypto",
+            "enabled": true,
+            "openai_api_key_env": "OPENAI_API_KEY"
+        }
+    ],
+
+    "trading_schedule": {
+        "run_interval_minutes": 60,
+        "enabled": true
+    },
+
+    "agent_config": {
+        "max_steps": 15,
+        "max_retries": 3,
+        "base_delay": 1.0,
+        "check_market_hours": false,
+        "verbose": false
+    },
+
+    "risk_config": {
+        "max_position_pct": 0.30,
+        "max_order_value": 10000,
+        "daily_loss_limit": 1000
+    },
+
+    "crypto_symbols": [
+        "BTC/USD",
+        "ETH/USD",
+        "SOL/USD",
+        "AVAX/USD",
+        "DOGE/USD",
+        "LINK/USD",
+        "UNI/USD",
+        "AAVE/USD",
+        "LTC/USD",
+        "BCH/USD"
+    ],
+
+    "log_config": {
+        "log_path": "./data/agent_data_crypto",
+        "save_trades": true
+    }
+}

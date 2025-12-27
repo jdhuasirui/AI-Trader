@@ -134,17 +134,44 @@ markets:
         icon: "./figs/zhipu-color.svg"
         color: "#6610f2"
 
-  # crypto:  # Future crypto market support
-  #   name: "Crypto Market"
-  #   subtitle: "Track how different AI models perform in cryptocurrency trading"
-  #   data_dir: "agent_data_crypto"
-  #   benchmark_file: "crypto/btc.json"
-  #   benchmark_name: "BTC"
-  #   benchmark_display_name: "Bitcoin"
-  #   currency: "USD"
-  #   icon: "₿"
-  #   price_data_type: "individual"
-  #   enabled: false
+  crypto:
+    name: "Crypto Market (24/7)"
+    subtitle: "Track how different AI models perform in cryptocurrency trading"
+    data_dir: "agent_data_crypto"
+    benchmark_file: "crypto/btc_prices.json"
+    benchmark_name: "BTC"
+    benchmark_display_name: "Bitcoin"
+    currency: "USD"
+    icon: "₿"
+    price_data_type: "individual"
+    time_granularity: "hourly"
+    enabled: true
+    agents:
+      - folder: "gpt-5.2-crypto"
+        display_name: "GPT-5.2"
+        icon: "./figs/openai.svg"
+        color: "#ffbe0b"
+        enabled: true
+      - folder: "claude-opus-4.5-crypto"
+        display_name: "Claude Opus 4.5"
+        icon: "./figs/claude-color.svg"
+        color: "#8338ec"
+        enabled: true
+      - folder: "gemini-3-pro-crypto"
+        display_name: "Gemini 3 Pro"
+        icon: "./figs/google.svg"
+        color: "#00d4ff"
+        enabled: true
+      - folder: "gemini-3-flash-crypto"
+        display_name: "Gemini 3 Flash"
+        icon: "./figs/google.svg"
+        color: "#00ffcc"
+        enabled: true
+      - folder: "grok-4-crypto"
+        display_name: "Grok 4"
+        icon: "./figs/xai.svg"
+        color: "#1DA1F2"
+        enabled: true
 
 # Data paths configuration (legacy support - will use market-specific paths when available)
 data:

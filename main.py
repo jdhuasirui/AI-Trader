@@ -33,6 +33,10 @@ AGENT_REGISTRY = {
     "BaseAgentCrypto": {
         "module": "agent.base_agent_crypto.base_agent_crypto",
         "class": "BaseAgentCrypto"
+    },
+    "AlpacaAgent": {
+        "module": "agent.alpaca_agent.alpaca_agent",
+        "class": "AlpacaAgent"
     }
 }
 

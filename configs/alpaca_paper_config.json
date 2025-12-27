@@ -1,0 +1,59 @@
+{
+  "agent_type": "AlpacaAgent",
+  "market": "us",
+  "trading_mode": "paper",
+  "description": "Alpaca Paper Trading Configuration",
+
+  "models": [
+    {
+      "name": "gpt-4o",
+      "basemodel": "gpt-4o",
+      "signature": "gpt-4o-alpaca",
+      "enabled": true
+    },
+    {
+      "name": "gpt-4o-mini",
+      "basemodel": "gpt-4o-mini",
+      "signature": "gpt-4o-mini-alpaca",
+      "enabled": false
+    },
+    {
+      "name": "claude-3-5-sonnet",
+      "basemodel": "claude-3-5-sonnet-20241022",
+      "signature": "claude-sonnet-alpaca",
+      "enabled": false
+    }
+  ],
+
+  "agent_config": {
+    "max_steps": 15,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "check_market_hours": true,
+    "verbose": false
+  },
+
+  "risk_config": {
+    "max_position_pct": 0.25,
+    "max_order_value": 5000,
+    "daily_loss_limit": 500
+  },
+
+  "stock_symbols": [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "META", "TSLA", "AVGO", "AMD", "NFLX",
+    "COST", "PEP", "ADBE", "CSCO", "INTC",
+    "QCOM", "TXN", "AMGN", "SBUX", "PYPL"
+  ],
+
+  "trading_schedule": {
+    "enabled": false,
+    "market_hours_only": true,
+    "run_interval_minutes": 60
+  },
+
+  "log_config": {
+    "log_path": "./data/agent_data_alpaca",
+    "save_trades": true
+  }
+}
