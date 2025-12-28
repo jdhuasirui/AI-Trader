@@ -171,16 +171,16 @@ def log_trade_to_jsonl(
 # ==================== MCP Tools ====================
 
 @mcp.tool()
-def buy(symbol: str, amount: int) -> Dict[str, Any]:
+def buy(symbol: str, amount: float) -> Dict[str, Any]:
     """
-    Buy stock through Alpaca Paper Trading.
+    Buy stock or crypto through Alpaca Paper Trading.
 
-    Submits a market order to buy the specified number of shares.
+    Submits a market order to buy the specified quantity.
     The order will be executed at the current market price.
 
     Args:
-        symbol: Stock symbol (e.g., "AAPL", "MSFT", "NVDA")
-        amount: Number of shares to buy (must be positive integer)
+        symbol: Stock symbol (e.g., "AAPL") or crypto pair (e.g., "BTC/USD", "ETHUSD")
+        amount: Quantity to buy (supports fractional amounts for crypto)
 
     Returns:
         Dict with:
@@ -310,16 +310,16 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def sell(symbol: str, amount: int) -> Dict[str, Any]:
+def sell(symbol: str, amount: float) -> Dict[str, Any]:
     """
-    Sell stock through Alpaca Paper Trading.
+    Sell stock or crypto through Alpaca Paper Trading.
 
-    Submits a market order to sell the specified number of shares.
-    You must have sufficient shares in your position to sell.
+    Submits a market order to sell the specified quantity.
+    You must have sufficient shares/coins in your position to sell.
 
     Args:
-        symbol: Stock symbol (e.g., "AAPL", "MSFT", "NVDA")
-        amount: Number of shares to sell (must be positive integer)
+        symbol: Stock symbol (e.g., "AAPL") or crypto pair (e.g., "BTC/USD", "ETHUSD")
+        amount: Quantity to sell (supports fractional amounts for crypto)
 
     Returns:
         Dict with:

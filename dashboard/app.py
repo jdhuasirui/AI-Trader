@@ -268,14 +268,14 @@ def load_performance_history(signature: str) -> List[Dict[str, Any]]:
         if not summaries:
             return []
 
-        # Get initial equity from first entry
-        initial_equity = summaries[0].get("start_equity", 100000)
+        # Always use 100000 as the baseline for consistent comparison
+        INITIAL_CASH = 100000
 
         history = []
         for entry in summaries:
             timestamp = entry.get("timestamp")
-            end_equity = entry.get("end_equity", initial_equity)
-            cumulative_return = ((end_equity / initial_equity) - 1) * 100
+            end_equity = entry.get("end_equity", INITIAL_CASH)
+            cumulative_return = ((end_equity / INITIAL_CASH) - 1) * 100
 
             history.append({
                 "timestamp": timestamp,
@@ -367,12 +367,38 @@ def get_performance_data() -> Dict[str, Any]:
     """Get performance history for all accounts and market benchmark."""
     accounts_history = {}
     earliest_time = datetime.now()
+    current_time = datetime.now().isoformat()
+    INITIAL_CASH = 100000
 
     for account_id, config in ACCOUNTS.items():
         signature = config["signature"]
         history = load_performance_history(signature)
 
+        # Get current equity from Alpaca to add real-time data point
+        current_equity = None
+        if ALPACA_AVAILABLE:
+            api_key = os.getenv(config["api_key_env"], "")
+            secret_key = os.getenv(config["secret_key_env"], "")
+            paper = os.getenv(config["paper_env"], "true").lower() == "true"
+            if api_key and secret_key:
+                try:
+                    client = TradingClient(api_key, secret_key, paper=paper)
+                    account = client.get_account()
+                    current_equity = float(account.equity)
+                except Exception as e:
+                    print(f"Error getting current equity for {account_id}: {e}")
+
         if history:
+            # Add current real-time data point if we have it
+            if current_equity is not None:
+                last_timestamp = history[-1]["timestamp"] if history else None
+                current_pnl_pct = ((current_equity / INITIAL_CASH) - 1) * 100
+                history.append({
+                    "timestamp": current_time,
+                    "equity": current_equity,
+                    "pnl_pct": current_pnl_pct,
+                })
+
             accounts_history[account_id] = {
                 "name": config["display_name"],
                 "color": config["color"],
@@ -394,7 +420,7 @@ def get_performance_data() -> Dict[str, Any]:
     return {
         "accounts": accounts_history,
         "benchmark": benchmark,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": current_time,
     }
 
 
