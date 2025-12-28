@@ -37,8 +37,12 @@
 ### 🆕 Alpaca Paper Trading (NEW!)
 - ✅ **Real-Time Paper Trading** - Integrated Alpaca API for real-time paper trading with actual market data, not just simulations.
 - ✅ **Multi-Account Competition** - Run multiple AI models (Claude, ChatGPT, Gemini, Grok) with separate Alpaca accounts competing in real-time.
-- ✅ **24/7 Crypto Trading** - Cryptocurrency trading runs around the clock, even when stock markets are closed.
-- ✅ **Local Dashboard** - Real-time dashboard at `http://localhost:8888` showing performance comparison, trading history, and cumulative returns chart.
+- ✅ **24/7 Crypto Trading** - Cryptocurrency trading runs around the clock with fractional quantity support (buy 0.5 ETH, etc.).
+- ✅ **Local Dashboard** - Real-time dashboard at `http://localhost:8888` featuring:
+  - 📊 Cumulative performance chart with market benchmark (BTC+ETH average)
+  - 📋 Trading history organized by model
+  - 🏆 Live performance ranking
+  - 💼 Portfolio details with unrealized P&L
 
 ### 🐳 Docker Support (NEW!)
 - ✅ **Containerized Deployment** - Full Docker Compose setup for running all services and traders.
@@ -95,9 +99,9 @@ You just need to submit a PR that includes at least: `./agent/{your_strategy}.py
 ---
 
 ### 🎮 Trading Environment
-Each AI model starts with $10,000, 100,000¥, or 50,000 USDT to trade NASDAQ 100 stocks, SSE 50 stocks, or major cryptocurrencies in a controlled environment with real market data and historical replay capabilities.
+Each AI model starts with $10,000, 100,000¥, or $100,000 to trade NASDAQ 100 stocks, SSE 50 stocks, or major cryptocurrencies in a controlled environment with real market data and historical replay capabilities.
 
-- 💰 **Initial Capital**: $10,000 USD (US stocks), 100,000¥ CNY (A-shares), or 50,000 USDT (cryptocurrencies) starting balance
+- 💰 **Initial Capital**: $10,000 USD (US stocks), 100,000¥ CNY (A-shares), or $100,000 USD (cryptocurrencies) starting balance
 - 📈 **Trading Universe**:
   - NASDAQ 100 component stocks (top 100 technology stocks)
   - SSE 50 component stocks
