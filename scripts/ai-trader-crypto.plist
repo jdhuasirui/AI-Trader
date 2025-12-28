@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+AI-Trader Crypto Trading Service for macOS
+
+Installation:
+1. Copy this file to ~/Library/LaunchAgents/
+2. Update the paths below to match your setup
+3. Load the service: launchctl load ~/Library/LaunchAgents/ai-trader-crypto.plist
+4. Start the service: launchctl start com.ai-trader.crypto
+
+To stop:
+  launchctl stop com.ai-trader.crypto
+  launchctl unload ~/Library/LaunchAgents/ai-trader-crypto.plist
+-->
+<dict>
+    <key>Label</key>
+    <string>com.ai-trader.crypto</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- UPDATE THIS PATH to your Python interpreter -->
+        <string>/Users/YOUR_USERNAME/opt/anaconda3/envs/ai-trader/bin/python</string>
+        <!-- UPDATE THIS PATH to your project directory -->
+        <string>/Users/YOUR_USERNAME/Desktop/Projects/ai-trader/main_alpaca.py</string>
+        <string>/Users/YOUR_USERNAME/Desktop/Projects/ai-trader/configs/alpaca_crypto_config.json</string>
+        <string>--scheduled</string>
+    </array>
+
+    <!-- UPDATE THIS PATH to your project directory -->
+    <key>WorkingDirectory</key>
+    <string>/Users/YOUR_USERNAME/Desktop/Projects/ai-trader</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Environment variables will be loaded from .env file -->
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USERNAME/Desktop/Projects/ai-trader/logs/crypto_trading.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USERNAME/Desktop/Projects/ai-trader/logs/crypto_trading_error.log</string>
+
+    <!-- Restart on crash after 60 seconds -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>

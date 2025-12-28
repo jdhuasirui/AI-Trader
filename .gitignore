@@ -90,8 +90,16 @@ configs/test_*.json
 # Data directories (optional - uncomment if needed)
 data/agent_data/test*/
 data/agent_data/*test*/
+data/agent_data_alpaca/
+data/agent_data_crypto/
 data/merged_daily.jsonl
 data/merged_hour.jsonl
+
+# Claude Code
+.claude/
+
+# Feedback
+feedback/
 
 # Jupyter Notebook
 .ipynb_checkpoints
