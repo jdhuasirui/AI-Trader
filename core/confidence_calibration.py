@@ -39,9 +39,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class CalibrationConfig:
-    """Configuration for confidence calibration."""
+    """Configuration for confidence calibration (immutable)."""
 
     # Platt scaling parameters
     platt_max_iter: int = 100  # Maximum iterations for fitting

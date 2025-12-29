@@ -21,9 +21,9 @@ from .metrics import calculate_all_metrics, BacktestMetrics
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class WFOConfig:
-    """Configuration for walk-forward optimization."""
+    """Configuration for walk-forward optimization (immutable)."""
 
     # Window sizes (in days)
     training_window: int = 30

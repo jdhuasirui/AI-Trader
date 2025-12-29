@@ -30,9 +30,9 @@ from .regime_detector import RegimeDetector
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AggregatorConfig:
-    """Configuration for signal aggregation."""
+    """Configuration for signal aggregation (immutable)."""
 
     # Consensus requirements
     consensus_threshold: float = 0.6  # 60% agreement required for action

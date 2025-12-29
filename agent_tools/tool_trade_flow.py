@@ -14,6 +14,7 @@ Features:
 - Real-time trade flow analysis
 """
 
+import logging
 import os
 import sys
 from datetime import datetime, timedelta
@@ -142,7 +143,8 @@ def calculate_adv(symbol: str, client) -> Optional[float]:
 
         return adv
 
-    except Exception:
+    except Exception as e:
+        logging.warning(f"ADV calculation failed for {symbol}: {e}")
         return None
 
 

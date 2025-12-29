@@ -221,9 +221,9 @@ class OrderStateMachine:
         return len(to_remove)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RetryConfig:
-    """Configuration for retry behavior."""
+    """Configuration for retry behavior (immutable)."""
     max_retries: int = 3
     initial_delay_ms: int = 100
     max_delay_ms: int = 5000

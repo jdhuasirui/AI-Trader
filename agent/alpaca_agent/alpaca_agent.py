@@ -309,9 +309,12 @@ class AlpacaAgent(BaseAgent):
             else:
                 return {"allowed": True}
 
+        except AlpacaClientError as e:
+            logging.error(f"Risk check failed - Alpaca API error: {e}")
+            return {"allowed": False, "reason": f"Risk check unavailable: Alpaca API error - {e}"}
         except Exception as e:
-            logging.error(f"Risk check failed: {e}")
-            return {"allowed": True}  # Fail open for now
+            logging.critical(f"CRITICAL: Risk check failed with unexpected error: {e}", exc_info=True)
+            return {"allowed": False, "reason": f"Risk check unavailable: {type(e).__name__} - {e}"}
 
     def record_trade_metrics(self, trade_data: Dict) -> None:
         """Record trade metrics for observability."""
@@ -449,8 +452,8 @@ class AlpacaAgent(BaseAgent):
                     quote = self.alpaca_client.get_quote(symbol)
                     price = quote.get('mid_price') or quote.get('bid_price', 0)
                     total += qty * price
-                except Exception:
-                    pass  # Skip if can't get price
+                except Exception as e:
+                    logging.warning(f"Failed to get quote for {symbol} in portfolio valuation: {e}")
         return total
 
     def get_virtual_portfolio_summary(self) -> Dict[str, Any]:

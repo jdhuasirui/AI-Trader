@@ -28,9 +28,9 @@ from .data_structures import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionConfig:
-    """Configuration for execution algorithms."""
+    """Configuration for execution algorithms (immutable)."""
 
     # TWAP settings
     twap_slices: int = 5  # Number of order slices

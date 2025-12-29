@@ -44,9 +44,9 @@ class DriftAction(str, Enum):
     ALERT = "ALERT"  # Send alert for human review
 
 
-@dataclass
+@dataclass(frozen=True)
 class DriftConfig:
-    """Configuration for drift detection."""
+    """Configuration for drift detection (immutable)."""
 
     # ADWIN parameters
     adwin_delta: float = 0.002  # Confidence parameter (smaller = more sensitive)

@@ -29,9 +29,9 @@ from .data_structures import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RiskConfig:
-    """Configuration for risk engine parameters."""
+    """Configuration for risk engine parameters (immutable)."""
 
     # Position limits (as fraction of portfolio)
     max_single_position: float = 0.10  # 10% max single position
@@ -72,6 +72,45 @@ class RiskConfig:
 
     # Circuit breaker cooldown (seconds)
     cooldown_period: int = 3600  # 1 hour cooldown after circuit breaker
+
+    def __post_init__(self):
+        """Validate risk configuration thresholds."""
+        # Position limits must be between 0 and 1
+        if not 0 < self.max_single_position <= 1:
+            raise ValueError(f"max_single_position must be in (0, 1], got {self.max_single_position}")
+        if not 0 < self.max_sector_exposure <= 1:
+            raise ValueError(f"max_sector_exposure must be in (0, 1], got {self.max_sector_exposure}")
+        if not 0 <= self.min_cash_buffer < 1:
+            raise ValueError(f"min_cash_buffer must be in [0, 1), got {self.min_cash_buffer}")
+
+        # Circuit breakers must be negative and in decreasing order
+        if not (self.daily_loss_reduce_size > self.daily_loss_halt_new > self.daily_loss_force_liquidate):
+            raise ValueError(
+                f"Circuit breaker thresholds must be in decreasing order: "
+                f"reduce_size ({self.daily_loss_reduce_size}) > halt_new ({self.daily_loss_halt_new}) > "
+                f"force_liquidate ({self.daily_loss_force_liquidate})"
+            )
+
+        # Drawdown thresholds must be negative and in decreasing order
+        if not (self.drawdown_reduce_25pct > self.drawdown_reduce_50pct >
+                self.drawdown_halt_new > self.drawdown_stop_all):
+            raise ValueError(
+                f"Drawdown thresholds must be in decreasing order: "
+                f"reduce_25pct ({self.drawdown_reduce_25pct}) > reduce_50pct ({self.drawdown_reduce_50pct}) > "
+                f"halt_new ({self.drawdown_halt_new}) > stop_all ({self.drawdown_stop_all})"
+            )
+
+        # Kelly fraction must be between 0 and 1
+        if not 0 < self.kelly_fraction <= 1:
+            raise ValueError(f"kelly_fraction must be in (0, 1], got {self.kelly_fraction}")
+        if not 0 < self.max_kelly_position <= 1:
+            raise ValueError(f"max_kelly_position must be in (0, 1], got {self.max_kelly_position}")
+
+        # ATR and cooldown must be positive
+        if self.atr_period <= 0:
+            raise ValueError(f"atr_period must be positive, got {self.atr_period}")
+        if self.cooldown_period < 0:
+            raise ValueError(f"cooldown_period must be non-negative, got {self.cooldown_period}")
 
 
 @dataclass

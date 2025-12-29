@@ -38,9 +38,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ValidationConfig:
-    """Configuration for validation framework."""
+    """Configuration for validation framework (immutable)."""
 
     # Walk-Forward settings
     wf_train_days: int = 30  # Training window in days

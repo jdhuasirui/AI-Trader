@@ -160,20 +160,37 @@ class Signal:
 
 @dataclass
 class Position:
-    """Represents a position in a single asset."""
+    """Represents a position in a single asset.
+
+    Core fields: symbol, quantity, avg_entry_price, current_price, opened_at, last_updated
+    Computed on init: unrealized_pnl, unrealized_pnl_pct, market_value, cost_basis
+    """
     symbol: str
     quantity: float
     avg_entry_price: float
     current_price: float
-    unrealized_pnl: float
-    unrealized_pnl_pct: float
-    market_value: float
-    cost_basis: float
     opened_at: datetime
     last_updated: datetime
 
+    # These are computed in __post_init__ but can be passed for backward compatibility
+    unrealized_pnl: float = field(default=0.0)
+    unrealized_pnl_pct: float = field(default=0.0)
+    market_value: float = field(default=0.0)
+    cost_basis: float = field(default=0.0)
+
     # For T+1 markets (A-shares)
     available_to_sell: float = 0  # Quantity available to sell today
+
+    def __post_init__(self):
+        """Compute derived fields from core fields for consistency."""
+        # Always recompute to ensure consistency
+        object.__setattr__(self, 'cost_basis', self.avg_entry_price * self.quantity)
+        object.__setattr__(self, 'market_value', self.current_price * self.quantity)
+        object.__setattr__(self, 'unrealized_pnl', self.market_value - self.cost_basis)
+        if self.cost_basis != 0:
+            object.__setattr__(self, 'unrealized_pnl_pct', (self.unrealized_pnl / abs(self.cost_basis)) * 100)
+        else:
+            object.__setattr__(self, 'unrealized_pnl_pct', 0.0)
 
     @property
     def is_long(self) -> bool:

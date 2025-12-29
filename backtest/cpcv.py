@@ -22,9 +22,9 @@ from .metrics import calculate_all_metrics, BacktestMetrics, probability_of_back
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class CPCVConfig:
-    """Configuration for CPCV validation."""
+    """Configuration for CPCV validation (immutable)."""
 
     # Number of folds
     n_splits: int = 6  # Number of time-series folds

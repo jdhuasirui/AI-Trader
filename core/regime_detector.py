@@ -22,9 +22,9 @@ from .data_structures import MarketState, Regime
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RegimeConfig:
-    """Configuration for regime detection."""
+    """Configuration for regime detection (immutable)."""
 
     # Feature thresholds
     adx_trending_threshold: float = 25.0  # ADX > 25 = trending

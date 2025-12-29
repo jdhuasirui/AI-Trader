@@ -13,6 +13,7 @@ Features:
 """
 
 import hashlib
+import logging
 import os
 import re
 import sys
@@ -146,7 +147,8 @@ def calculate_recency_weight(published_at: str) -> float:
 
         return round(max(0.0, min(1.0, weight)), 3)
 
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to parse timestamp '{published_at}': {e}. Using default weight.")
         return 0.5  # Default weight for parsing errors
 
 
@@ -197,11 +199,12 @@ def get_peer_reactions(
                         change_pct = ((curr_close - prev_close) / prev_close) * 100
                         reactions[peer] = round(change_pct, 2)
 
-            except Exception:
+            except Exception as e:
+                logging.debug(f"Failed to get bars for peer {peer}: {e}")
                 continue
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Peer reaction analysis failed for {symbol}: {e}")
 
     return reactions
 
@@ -326,9 +329,11 @@ Summary headline:"""
 
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"].strip()
+        else:
+            logging.warning(f"LLM summarization failed with status {response.status_code}")
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"LLM cluster summarization failed: {e}")
 
     # Fallback to first headline
     return cluster["headlines"][0] if cluster["headlines"] else "News cluster"

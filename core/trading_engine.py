@@ -53,9 +53,9 @@ class EngineMode(Enum):
     LIVE = "live"
 
 
-@dataclass
+@dataclass(frozen=True)
 class TradingEngineConfig:
-    """Configuration for the trading engine"""
+    """Configuration for the trading engine (immutable)"""
     # General settings
     mode: EngineMode = EngineMode.PAPER
     initial_capital: float = 100000.0

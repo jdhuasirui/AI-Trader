@@ -449,7 +449,6 @@ def get_performance_data() -> Dict[str, Any]:
         if history:
             # Add current real-time data point if we have it
             if current_equity is not None:
-                last_timestamp = history[-1]["timestamp"] if history else None
                 current_pnl_pct = ((current_equity / INITIAL_CASH) - 1) * 100
                 history.append({
                     "timestamp": current_time,
