@@ -268,53 +268,81 @@ class AlpacaAgent(BaseAgent):
         if not CORE_MODULES_AVAILABLE or self._risk_engine is None:
             return {"allowed": True}
 
-        try:
-            # Get current portfolio state from Alpaca
-            account = self.alpaca_client.get_account()
-            positions = self.alpaca_client.get_positions()
+        max_retries = 3
+        retry_delay = 0.5  # seconds
 
-            # Build portfolio object
-            portfolio = Portfolio(
-                cash=account['cash'],
-                positions={
-                    sym: Position(
-                        symbol=sym,
-                        quantity=pos['qty'],
-                        avg_price=pos['avg_entry_price'],
-                        current_price=pos['current_price'],
-                        market_value=pos['market_value'],
-                    )
-                    for sym, pos in positions.items()
-                },
-                total_value=account['portfolio_value'],
-            )
+        for attempt in range(max_retries):
+            try:
+                # Get current portfolio state from Alpaca
+                account = self.alpaca_client.get_account()
+                positions = self.alpaca_client.get_positions()
 
-            # Create order intent
-            order_intent = OrderIntent(
-                symbol=symbol,
-                quantity=quantity,
-                side=side.upper(),
-                order_type=OrderType.MARKET,
-                limit_price=price if side.upper() == "BUY" else None,
-            )
+                # Build portfolio object
+                portfolio = Portfolio(
+                    cash=account['cash'],
+                    positions={
+                        sym: Position(
+                            symbol=sym,
+                            quantity=pos['qty'],
+                            avg_price=pos['avg_entry_price'],
+                            current_price=pos['current_price'],
+                            market_value=pos['market_value'],
+                        )
+                        for sym, pos in positions.items()
+                    },
+                    total_value=account['portfolio_value'],
+                )
 
-            # Validate against risk engine
-            action, reason = self._risk_engine.validate_order(order_intent, portfolio)
+                # Create order intent
+                order_intent = OrderIntent(
+                    symbol=symbol,
+                    quantity=quantity,
+                    side=side.upper(),
+                    order_type=OrderType.MARKET,
+                    limit_price=price if side.upper() == "BUY" else None,
+                )
 
-            if action == RiskAction.BLOCK:
-                return {"allowed": False, "reason": reason}
-            elif action == RiskAction.REDUCE:
-                # Risk engine suggests reducing size
-                return {"allowed": True, "warning": reason}
-            else:
-                return {"allowed": True}
+                # Validate against risk engine
+                action, reason = self._risk_engine.validate_order(order_intent, portfolio)
 
-        except AlpacaClientError as e:
-            logging.error(f"Risk check failed - Alpaca API error: {e}")
-            return {"allowed": False, "reason": f"Risk check unavailable: Alpaca API error - {e}"}
-        except Exception as e:
-            logging.critical(f"CRITICAL: Risk check failed with unexpected error: {e}", exc_info=True)
-            return {"allowed": False, "reason": f"Risk check unavailable: {type(e).__name__} - {e}"}
+                if action == RiskAction.BLOCK:
+                    return {"allowed": False, "reason": reason}
+                elif action == RiskAction.REDUCE:
+                    # Risk engine suggests reducing size
+                    return {"allowed": True, "warning": reason}
+                else:
+                    return {"allowed": True}
+
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Transient network errors - retry
+                if attempt < max_retries - 1:
+                    logging.warning(f"Risk check network error (attempt {attempt + 1}/{max_retries}): {e}")
+                    import time
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    logging.error(f"Risk check failed after {max_retries} retries - network error: {e}")
+                    return {"allowed": False, "reason": f"Risk check unavailable: Network error after {max_retries} retries - {e}"}
+
+            except AlpacaClientError as e:
+                # Check if it's a rate limit or transient error
+                error_str = str(e).lower()
+                if "rate" in error_str or "timeout" in error_str or "429" in error_str:
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Risk check rate limited (attempt {attempt + 1}/{max_retries}): {e}")
+                        import time
+                        time.sleep(retry_delay * (attempt + 1) * 2)  # Longer backoff for rate limits
+                        continue
+                # Non-transient Alpaca error
+                logging.error(f"Risk check failed - Alpaca API error: {e}")
+                return {"allowed": False, "reason": f"Risk check unavailable: Alpaca API error - {e}"}
+
+            except Exception as e:
+                logging.critical(f"CRITICAL: Risk check failed with unexpected error: {e}", exc_info=True)
+                return {"allowed": False, "reason": f"Risk check unavailable: {type(e).__name__} - {e}"}
+
+        # Should not reach here, but fail-closed as safety
+        return {"allowed": False, "reason": "Risk check failed: max retries exceeded"}
 
     def record_trade_metrics(self, trade_data: Dict) -> None:
         """Record trade metrics for observability."""
@@ -471,7 +499,8 @@ class AlpacaAgent(BaseAgent):
                         'price': price,
                         'value': qty * price
                     })
-                except Exception:
+                except Exception as e:
+                    logging.debug(f"Failed to get quote for {symbol} in summary: {e}")
                     positions.append({
                         'symbol': symbol,
                         'quantity': qty,
@@ -575,8 +604,8 @@ class AlpacaAgent(BaseAgent):
                     "tags": [self.signature, today_date],
                     "run_name": f"{self.signature}-alpaca-session"
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug(f"Could not add verbose callbacks: {e}")
 
         # Initial user query
         user_query = [{

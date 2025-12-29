@@ -32,7 +32,7 @@ from .data_structures import (
 )
 
 from .risk_engine import RiskEngine, RiskConfig, RiskState
-from .order_manager import OrderManager, OrderStateMachine, OrderState, RetryConfig
+from .order_manager import OrderManager, OrderStateMachine, OrderState, OrderEvent, RetryConfig
 from .observability import MetricsCollector, AuditLogger, AlertManager, PerformanceMetrics
 from .execution_algos import (
     ExecutionAlgorithm,
@@ -110,6 +110,7 @@ __all__ = [
     "OrderManager",
     "OrderStateMachine",
     "OrderState",
+    "OrderEvent",
     "RetryConfig",
     # Observability
     "MetricsCollector",

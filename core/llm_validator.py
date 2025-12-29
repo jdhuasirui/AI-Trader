@@ -184,8 +184,9 @@ class LLMValidator:
                 result.errors.append("'signals' must be an array")
             else:
                 for i, signal in enumerate(data["signals"]):
-                    signal_errors = self._validate_signal(signal, i)
+                    signal_errors, signal_warnings = self._validate_signal(signal, i)
                     result.errors.extend(signal_errors)
+                    result.warnings.extend(signal_warnings)
 
         # Validate analysis
         if "analysis" in data:
@@ -196,9 +197,15 @@ class LLMValidator:
 
         return result
 
-    def _validate_signal(self, signal: Dict, index: int) -> List[str]:
-        """Validate individual signal object."""
+    def _validate_signal(self, signal: Dict, index: int) -> Tuple[List[str], List[str]]:
+        """
+        Validate individual signal object with business logic checks.
+
+        Returns:
+            Tuple of (errors, warnings)
+        """
         errors = []
+        warnings = []
         prefix = f"Signal[{index}]"
 
         required_fields = ["symbol", "action", "quantity", "confidence", "reasoning"]
@@ -206,27 +213,49 @@ class LLMValidator:
             if field not in signal:
                 errors.append(f"{prefix}: Missing required field '{field}'")
 
+        # Validate symbol
+        if "symbol" in signal:
+            symbol = signal["symbol"]
+            if not symbol or not isinstance(symbol, str):
+                errors.append(f"{prefix}: Symbol must be a non-empty string")
+            elif not re.match(r'^[A-Z0-9./\-]{1,10}$', symbol.upper()):
+                errors.append(f"{prefix}: Invalid symbol format '{symbol}'")
+
         # Validate action
         if "action" in signal:
             valid_actions = ["BUY", "SELL", "HOLD"]
             if signal["action"].upper() not in valid_actions:
                 errors.append(f"{prefix}: Invalid action '{signal['action']}', must be one of {valid_actions}")
 
-        # Validate confidence
+        # Validate confidence with business logic
         if "confidence" in signal:
             try:
                 conf = float(signal["confidence"])
                 if not 0 <= conf <= 1:
                     errors.append(f"{prefix}: Confidence must be between 0 and 1, got {conf}")
+                elif conf == 0:
+                    warnings.append(f"{prefix}: Zero confidence is suspicious - signal may be unreliable")
+                elif conf < 0.2:
+                    warnings.append(f"{prefix}: Very low confidence ({conf:.2f}) - consider ignoring signal")
+                elif conf > 0.95:
+                    warnings.append(f"{prefix}: Extremely high confidence ({conf:.2f}) may indicate overconfidence")
             except (TypeError, ValueError):
                 errors.append(f"{prefix}: Confidence must be a number")
 
-        # Validate quantity
+        # Validate quantity with business logic
         if "quantity" in signal:
             try:
                 qty = float(signal["quantity"])
+                action = signal.get("action", "").upper()
+
                 if qty < 0:
                     errors.append(f"{prefix}: Quantity cannot be negative")
+                elif qty == 0 and action in ["BUY", "SELL"]:
+                    errors.append(f"{prefix}: Zero quantity is invalid for {action} action")
+                elif qty > 100000:
+                    warnings.append(f"{prefix}: Extremely large quantity ({qty}) may be unrealistic")
+                elif qty < 1 and action != "HOLD":
+                    warnings.append(f"{prefix}: Fractional quantity ({qty}) may cause execution issues")
             except (TypeError, ValueError):
                 errors.append(f"{prefix}: Quantity must be a number")
 
@@ -236,7 +265,7 @@ class LLMValidator:
             if len(reasoning) < self.min_reasoning_length:
                 errors.append(f"{prefix}: Reasoning too short (min {self.min_reasoning_length} chars)")
 
-        return errors
+        return errors, warnings
 
     def _fact_check(self, data: Dict, market_state: MarketState) -> ValidationResult:
         """Verify claims in LLM output against actual market data."""

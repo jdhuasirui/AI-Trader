@@ -69,6 +69,7 @@ class CacheManager:
     - Namespace support for organizing cache keys
     - Cache statistics
     - Degraded mode flag for API failures
+    - Max entries limit with LRU eviction
     """
 
     # Default TTL values for different data types (in seconds)
@@ -82,20 +83,26 @@ class CacheManager:
         "correlations": 604800,  # 7 days for stock correlations
     }
 
-    def __init__(self, cleanup_interval: float = 60.0):
+    # Default max entries (prevent unbounded growth)
+    DEFAULT_MAX_ENTRIES = 10000
+
+    def __init__(self, cleanup_interval: float = 60.0, max_entries: int = None):
         """
         Initialize cache manager.
 
         Args:
             cleanup_interval: How often to clean up expired entries (seconds)
+            max_entries: Maximum number of cache entries (default: 10000)
         """
         self._cache: Dict[str, CacheEntry] = {}
         self._lock = threading.RLock()
+        self._max_entries = max_entries or self.DEFAULT_MAX_ENTRIES
         self._stats = {
             "hits": 0,
             "misses": 0,
             "sets": 0,
             "evictions": 0,
+            "lru_evictions": 0,
         }
 
         # Degraded mode tracking
@@ -182,6 +189,33 @@ class CacheManager:
                 "access_count": entry.access_count,
             }
 
+    def _evict_lru(self, count: int = 1) -> int:
+        """
+        Evict least recently used entries.
+
+        Args:
+            count: Number of entries to evict
+
+        Returns:
+            Number of entries actually evicted
+        """
+        if not self._cache:
+            return 0
+
+        # Sort by last_accessed (oldest first)
+        sorted_keys = sorted(
+            self._cache.keys(),
+            key=lambda k: self._cache[k].last_accessed
+        )
+
+        evicted = 0
+        for key in sorted_keys[:count]:
+            del self._cache[key]
+            evicted += 1
+            self._stats["lru_evictions"] += 1
+
+        return evicted
+
     def set(
         self,
         key: str,
@@ -204,6 +238,12 @@ class CacheManager:
         full_key = self._make_key(namespace, key)
 
         with self._lock:
+            # Check if we need to evict entries to stay under max
+            if full_key not in self._cache and len(self._cache) >= self._max_entries:
+                # Evict 10% of entries to avoid frequent evictions
+                evict_count = max(1, self._max_entries // 10)
+                self._evict_lru(evict_count)
+
             self._cache[full_key] = CacheEntry(
                 value=value,
                 created_at=time.time(),
@@ -290,11 +330,14 @@ class CacheManager:
 
             return {
                 "entries": len(self._cache),
+                "max_entries": self._max_entries,
+                "utilization_pct": round(len(self._cache) / self._max_entries * 100, 1),
                 "hits": self._stats["hits"],
                 "misses": self._stats["misses"],
                 "hit_rate_pct": round(hit_rate, 1),
                 "sets": self._stats["sets"],
                 "evictions": self._stats["evictions"],
+                "lru_evictions": self._stats["lru_evictions"],
             }
 
     # ==================== Degraded Mode ====================
