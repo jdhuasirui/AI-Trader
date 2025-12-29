@@ -34,6 +34,10 @@ class AlpacaMCPServiceManager:
             "search": int(os.getenv("SEARCH_HTTP_PORT", "8001")),
             "alpaca_price": int(os.getenv("ALPACA_PRICE_PORT", "8010")),
             "alpaca_trade": int(os.getenv("ALPACA_TRADE_PORT", "8011")),
+            "alpaca_news": int(os.getenv("ALPACA_NEWS_PORT", "8012")),
+            "trade_flow": int(os.getenv("TRADE_FLOW_PORT", "8013")),
+            "corporate_actions": int(os.getenv("CORPORATE_ACTIONS_PORT", "8014")),
+            "onchain": int(os.getenv("ONCHAIN_PORT", "8015")),
         }
 
         # Service configurations
@@ -58,6 +62,26 @@ class AlpacaMCPServiceManager:
                 "script": os.path.join(mcp_server_dir, "tool_trade_alpaca.py"),
                 "name": "AlpacaTrade",
                 "port": self.ports["alpaca_trade"],
+            },
+            "alpaca_news": {
+                "script": os.path.join(mcp_server_dir, "tool_news_alpaca.py"),
+                "name": "AlpacaNews",
+                "port": self.ports["alpaca_news"],
+            },
+            "trade_flow": {
+                "script": os.path.join(mcp_server_dir, "tool_trade_flow.py"),
+                "name": "TradeFlow",
+                "port": self.ports["trade_flow"],
+            },
+            "corporate_actions": {
+                "script": os.path.join(mcp_server_dir, "tool_corporate_actions.py"),
+                "name": "CorporateActions",
+                "port": self.ports["corporate_actions"],
+            },
+            "onchain": {
+                "script": os.path.join(mcp_server_dir, "tool_onchain_metrics.py"),
+                "name": "OnChainMetrics",
+                "port": self.ports["onchain"],
             },
         }
 
@@ -167,10 +191,16 @@ class AlpacaMCPServiceManager:
         try:
             # Set port environment variable
             env = os.environ.copy()
-            if service_id == "alpaca_price":
-                env["ALPACA_PRICE_PORT"] = str(port)
-            elif service_id == "alpaca_trade":
-                env["ALPACA_TRADE_PORT"] = str(port)
+            port_env_map = {
+                "alpaca_price": "ALPACA_PRICE_PORT",
+                "alpaca_trade": "ALPACA_TRADE_PORT",
+                "alpaca_news": "ALPACA_NEWS_PORT",
+                "trade_flow": "TRADE_FLOW_PORT",
+                "corporate_actions": "CORPORATE_ACTIONS_PORT",
+                "onchain": "ONCHAIN_PORT",
+            }
+            if service_id in port_env_map:
+                env[port_env_map[service_id]] = str(port)
 
             # Start service process
             log_file = self.log_dir / f"{service_id}.log"

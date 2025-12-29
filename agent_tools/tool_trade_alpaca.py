@@ -47,13 +47,40 @@ class TradingRiskManager:
     """
     Risk management for trading operations.
     Enforces position limits, daily loss limits, and order size limits.
+
+    Enhanced with:
+    - Cumulative position checking (existing + new order)
+    - ATR-based position sizing awareness
+    - Drawdown protection
+    - Cash-only trading (no margin usage)
+    - Total invested amount tracking
     """
 
     def __init__(self):
         # Load risk limits from config or use defaults
-        self.max_position_pct = float(os.getenv("ALPACA_MAX_POSITION_PCT", "0.25"))
+        # IMPORTANT: max_position_pct is the TOTAL position limit (existing + new)
+        self.max_position_pct = float(os.getenv("ALPACA_MAX_POSITION_PCT", "0.15"))  # 15% max per position
         self.max_order_value = float(os.getenv("ALPACA_MAX_ORDER_VALUE", "5000"))
         self.daily_loss_limit = float(os.getenv("ALPACA_DAILY_LOSS_LIMIT", "500"))
+        self.warn_position_pct = 0.10  # Warn at 10%
+        # New: Maximum percentage of portfolio that can be invested (prevents over-leveraging)
+        self.max_invested_pct = float(os.getenv("ALPACA_MAX_INVESTED_PCT", "0.95"))  # 95% max invested
+        # New: Prevent margin usage - only use cash
+        self.use_margin = os.getenv("ALPACA_USE_MARGIN", "false").lower() == "true"
+
+    def get_existing_position_value(self, symbol: str, positions: Dict[str, Any]) -> float:
+        """Get the current market value of an existing position."""
+        if symbol in positions:
+            pos = positions[symbol]
+            return pos.get("market_value", pos.get("qty", 0) * pos.get("current_price", 0))
+        return 0.0
+
+    def get_total_invested(self, positions: Dict[str, Any]) -> float:
+        """Get total market value of all positions."""
+        total = 0.0
+        for symbol, pos in positions.items():
+            total += pos.get("market_value", pos.get("qty", 0) * pos.get("current_price", 0))
+        return total
 
     def validate_order(
         self,
@@ -61,10 +88,14 @@ class TradingRiskManager:
         qty: float,
         side: str,
         price: float,
-        account: Dict[str, Any]
+        account: Dict[str, Any],
+        positions: Dict[str, Any] = None
     ) -> tuple[bool, str]:
         """
         Validate an order against risk limits.
+
+        IMPORTANT: Checks TOTAL position (existing + new order) against limits.
+        NEW: Also prevents margin usage by checking against cash balance.
 
         Args:
             symbol: Stock symbol
@@ -72,6 +103,7 @@ class TradingRiskManager:
             side: "buy" or "sell"
             price: Estimated price
             account: Account info from Alpaca
+            positions: Current positions dict (optional, will fetch if not provided)
 
         Returns:
             (is_valid, message) tuple
@@ -83,16 +115,56 @@ class TradingRiskManager:
             return False, f"Order value ${order_value:.2f} exceeds max ${self.max_order_value:.2f}"
 
         if side.lower() == "buy":
-            # Check buying power
+            # NEW: Check against CASH balance (not buying power) to prevent margin usage
+            cash = account.get("cash", 0)
+            if not self.use_margin and order_value > cash:
+                return False, (
+                    f"MARGIN BLOCKED: Order ${order_value:.2f} exceeds available cash ${cash:.2f}. "
+                    f"Margin trading is disabled to protect your account. "
+                    f"(Buying power ${account['buying_power']:.2f} includes margin which we don't use)"
+                )
+
+            # Also check buying power as a safety net
             if order_value > account["buying_power"]:
                 return False, f"Insufficient buying power. Need ${order_value:.2f}, have ${account['buying_power']:.2f}"
 
-            # Check position concentration
+            # NEW: Check total invested amount won't exceed limit
+            if positions:
+                current_invested = self.get_total_invested(positions)
+                equity = account["equity"]
+                new_total_invested = current_invested + order_value
+                invested_pct = new_total_invested / equity if equity > 0 else 1.0
+
+                if invested_pct > self.max_invested_pct:
+                    return False, (
+                        f"INVESTMENT LIMIT: Total invested would be {invested_pct*100:.1f}% of equity "
+                        f"(current ${current_invested:.0f} + new ${order_value:.0f} = ${new_total_invested:.0f}), "
+                        f"max allowed is {self.max_invested_pct*100:.0f}% (${equity * self.max_invested_pct:.0f}). "
+                        f"Keep some cash reserve."
+                    )
+
+            # Check CUMULATIVE position concentration (existing + new)
             equity = account["equity"]
             if equity > 0:
-                position_pct = order_value / equity
-                if position_pct > self.max_position_pct:
-                    return False, f"Position would be {position_pct*100:.1f}% of portfolio, max is {self.max_position_pct*100:.1f}%"
+                # Get existing position value
+                existing_value = 0.0
+                if positions:
+                    existing_value = self.get_existing_position_value(symbol, positions)
+
+                # Calculate TOTAL position after this order
+                total_position_value = existing_value + order_value
+                total_position_pct = total_position_value / equity
+
+                if total_position_pct > self.max_position_pct:
+                    return False, (
+                        f"RISK LIMIT: Total {symbol} position would be {total_position_pct*100:.1f}% "
+                        f"(existing ${existing_value:.0f} + new ${order_value:.0f} = ${total_position_value:.0f}), "
+                        f"max allowed is {self.max_position_pct*100:.0f}% (${equity * self.max_position_pct:.0f})"
+                    )
+
+                # Warning for positions approaching limit
+                if total_position_pct > self.warn_position_pct:
+                    print(f"⚠️ WARNING: {symbol} position will be {total_position_pct*100:.1f}% after this order")
 
         return True, "OK"
 
@@ -238,12 +310,13 @@ def buy(symbol: str, amount: float) -> Dict[str, Any]:
                 "symbol": symbol,
             }
 
-        # Get account info
+        # Get account info and current positions
         account = client.get_account()
+        positions = client.get_positions()
 
-        # Validate against risk limits
+        # Validate against risk limits (including existing positions)
         is_valid, message = risk_manager.validate_order(
-            symbol, amount, "buy", estimated_price, account
+            symbol, amount, "buy", estimated_price, account, positions
         )
         if not is_valid:
             return {

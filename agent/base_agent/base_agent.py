@@ -99,6 +99,16 @@ from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
 
+# Import TradingEngine for integrated trading (optional)
+try:
+    from core import (
+        TradingEngine, TradingEngineConfig, EngineMode,
+        SignalDirection, Regime,
+    )
+    TRADING_ENGINE_AVAILABLE = True
+except ImportError:
+    TRADING_ENGINE_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -235,7 +245,8 @@ class BaseAgent:
         initial_cash: float = 10000.0,
         init_date: str = "2025-10-13",
         market: str = "us",
-        verbose: bool = False
+        verbose: bool = False,
+        trading_engine: Optional[Any] = None,
     ):
         """
         Initialize BaseAgent
@@ -255,6 +266,7 @@ class BaseAgent:
             init_date: Initialization date
             market: Market type, "us" for US stocks or "cn" for A-shares
             verbose: Enable verbose output for LangChain agent
+            trading_engine: Optional TradingEngine instance for integrated trading
         """
         self.signature = signature
         self.basemodel = basemodel
@@ -305,6 +317,12 @@ class BaseAgent:
         # Data paths
         self.data_path = os.path.join(self.base_log_path, self.signature)
         self.position_file = os.path.join(self.data_path, "position", "position.jsonl")
+
+        # Trading Engine integration (optional)
+        self.trading_engine = trading_engine
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            self.trading_engine.register_model(self.signature)
+            print(f"✅ Agent {self.signature} registered with TradingEngine")
 
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         """Get default MCP configuration"""
@@ -736,6 +754,50 @@ class BaseAgent:
             "positions": latest_position.get("positions", {}),
             "total_records": len(positions),
         }
+
+    def check_model_health(self) -> bool:
+        """
+        Check if the model is healthy using the TradingEngine.
+
+        Returns:
+            True if model is healthy or no engine available, False otherwise
+        """
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            return self.trading_engine.check_model_health(self.signature)
+        return True
+
+    def get_model_stats(self) -> Dict[str, Any]:
+        """
+        Get model statistics from the TradingEngine.
+
+        Returns:
+            Dictionary of model statistics
+        """
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            return self.trading_engine.get_model_stats(self.signature)
+        return {
+            "model_id": self.signature,
+            "signals_generated": 0,
+            "is_healthy": True,
+            "weight_adjustment": 1.0,
+        }
+
+    def record_trade_outcome(self, prediction: float, actual: float, pnl: float) -> None:
+        """
+        Record the outcome of a trade for drift detection and calibration.
+
+        Args:
+            prediction: Predicted confidence/value
+            actual: Actual outcome
+            pnl: Profit/loss from the trade
+        """
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            self.trading_engine.record_outcome(
+                model_id=self.signature,
+                prediction=prediction,
+                actual=actual,
+                pnl=pnl
+            )
 
     def __str__(self) -> str:
         return (

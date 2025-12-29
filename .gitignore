@@ -121,7 +121,9 @@ plan.md
 design.md
 deprecated/
 *_SUCCESS.md
-test_*.py
+# Test files except in tests/ directory
+/test_*.py
+!/tests/test_*.py
 *.backup
 /data/*_test_agent/
 *__test*

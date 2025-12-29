@@ -94,6 +94,24 @@ def extract_conversation(conversation: dict, output_type: str):
                 return default
         return current
 
+    def normalize_content(content) -> str:
+        """Normalize content that can be string or list of content parts (Gemini/Claude format)."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            # Handle content like [{"type": "text", "text": "..."}] or [{"text": "..."}]
+            parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    # Try 'text' field first (common in Gemini/Claude)
+                    text = item.get("text") or item.get("content") or ""
+                    if text:
+                        parts.append(str(text))
+                elif isinstance(item, str):
+                    parts.append(item)
+            return "\n".join(parts)
+        return ""
+
     messages = get_field(conversation, "messages", []) or []
 
     if output_type == "all":
@@ -103,13 +121,20 @@ def extract_conversation(conversation: dict, output_type: str):
         # Prefer the last message with finish_reason == 'stop' and non-empty content.
         for msg in reversed(messages):
             finish_reason = get_nested(msg, ["response_metadata", "finish_reason"])
-            content = get_field(msg, "content")
-            if finish_reason == "stop" and isinstance(content, str) and content.strip():
+            raw_content = get_field(msg, "content")
+            content = normalize_content(raw_content)
+            if finish_reason == "stop" and content.strip():
                 return content
 
-        # Fallback: last AI-like message with non-empty content and not a tool call.
+        # Fallback: last AI/assistant message with non-empty content and not a tool call.
         for msg in reversed(messages):
-            content = get_field(msg, "content")
+            # Skip user messages - we want assistant/AI responses only
+            role = get_field(msg, "role") or get_field(msg, "type") or ""
+            if isinstance(role, str) and role.lower() in ("user", "human"):
+                continue
+
+            raw_content = get_field(msg, "content")
+            content = normalize_content(raw_content)
             additional_kwargs = get_field(msg, "additional_kwargs", {}) or {}
             tool_calls = None
             if isinstance(additional_kwargs, dict):
@@ -123,7 +148,7 @@ def extract_conversation(conversation: dict, output_type: str):
             tool_name = get_field(msg, "name")
             is_tool_message = has_tool_call_id or isinstance(tool_name, str)
 
-            if not is_tool_invoke and not is_tool_message and isinstance(content, str) and content.strip():
+            if not is_tool_invoke and not is_tool_message and content.strip():
                 return content
 
         return None

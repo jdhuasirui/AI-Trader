@@ -7,13 +7,55 @@ Shows portfolio performance comparison across Claude, ChatGPT, Gemini, and Grok.
 
 import json
 import os
+import re
+import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
+
+# Try to import zoneinfo (Python 3.9+) or pytz as fallback
+try:
+    from zoneinfo import ZoneInfo
+    EST = ZoneInfo("America/New_York")
+except ImportError:
+    try:
+        import pytz
+        EST = pytz.timezone("America/New_York")
+    except ImportError:
+        EST = None
+        print("Warning: No timezone library available. Times will be in UTC.")
+
+
+def to_est(dt: datetime) -> datetime:
+    """Convert a datetime to EST/EDT timezone."""
+    if EST is None:
+        return dt
+
+    # If naive datetime, assume UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(EST)
+
+
+def format_est(dt: datetime, fmt: str = "%Y-%m-%d %H:%M:%S EST") -> str:
+    """Format a datetime in EST timezone."""
+    est_dt = to_est(dt)
+    return est_dt.strftime(fmt)
+
+
+def now_est() -> datetime:
+    """Get current time in EST."""
+    return to_est(datetime.now(timezone.utc))
+
+
+def now_est_iso() -> str:
+    """Get current time in EST as ISO format string."""
+    return now_est().isoformat()
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -169,7 +211,7 @@ def get_account_data(account_id: str, config: Dict) -> Dict[str, Any]:
             "total_unrealized_pl": total_unrealized_pl,
             "positions": positions,
             "position_count": len(positions),
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": now_est_iso(),
         }
 
     except Exception as e:
@@ -210,7 +252,7 @@ def get_all_accounts_data() -> Dict[str, Any]:
 
     return {
         "status": "ok",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_est_iso(),
         "accounts": accounts_data,
         "summary": {
             "total_portfolio_value": total_portfolio_value,
@@ -273,12 +315,28 @@ def load_performance_history(signature: str) -> List[Dict[str, Any]]:
 
         history = []
         for entry in summaries:
-            timestamp = entry.get("timestamp")
+            timestamp_str = entry.get("timestamp")
             end_equity = entry.get("end_equity", INITIAL_CASH)
             cumulative_return = ((end_equity / INITIAL_CASH) - 1) * 100
 
+            # Convert timestamp to EST for consistent display
+            # Historical timestamps from Docker are in UTC
+            try:
+                if timestamp_str:
+                    # Parse the timestamp
+                    dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                    # If naive datetime, assume UTC
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    # Convert to EST
+                    timestamp_est = to_est(dt).isoformat()
+                else:
+                    timestamp_est = timestamp_str
+            except Exception:
+                timestamp_est = timestamp_str
+
             history.append({
-                "timestamp": timestamp,
+                "timestamp": timestamp_est,
                 "equity": end_equity,
                 "pnl_pct": cumulative_return,
             })
@@ -326,16 +384,16 @@ def get_market_benchmark(start_time: datetime) -> List[Dict[str, Any]]:
 
         if "BTC/USD" in bars_data:
             for bar in bars_data["BTC/USD"]:
-                # Convert UTC to local time (remove timezone info for consistency)
-                local_ts = bar.timestamp.astimezone().replace(tzinfo=None)
-                ts = local_ts.isoformat()
+                # Convert to EST for consistent display
+                est_ts = to_est(bar.timestamp)
+                ts = est_ts.isoformat()
                 btc_prices[ts] = bar.close
 
         if "ETH/USD" in bars_data:
             for bar in bars_data["ETH/USD"]:
-                # Convert UTC to local time (remove timezone info for consistency)
-                local_ts = bar.timestamp.astimezone().replace(tzinfo=None)
-                ts = local_ts.isoformat()
+                # Convert to EST for consistent display
+                est_ts = to_est(bar.timestamp)
+                ts = est_ts.isoformat()
                 eth_prices[ts] = bar.close
 
         # Calculate average returns
@@ -366,8 +424,8 @@ def get_market_benchmark(start_time: datetime) -> List[Dict[str, Any]]:
 def get_performance_data() -> Dict[str, Any]:
     """Get performance history for all accounts and market benchmark."""
     accounts_history = {}
-    earliest_time = datetime.now()
-    current_time = datetime.now().isoformat()
+    earliest_time = datetime.now(timezone.utc)
+    current_time = now_est_iso()
     INITIAL_CASH = 100000
 
     for account_id, config in ACCOUNTS.items():
@@ -391,7 +449,6 @@ def get_performance_data() -> Dict[str, Any]:
         if history:
             # Add current real-time data point if we have it
             if current_equity is not None:
-                last_timestamp = history[-1]["timestamp"] if history else None
                 current_pnl_pct = ((current_equity / INITIAL_CASH) - 1) * 100
                 history.append({
                     "timestamp": current_time,
@@ -448,6 +505,11 @@ def get_order_history(account_id: str, config: Dict, limit: int = 100) -> List[D
             filled_avg_price = float(order.filled_avg_price) if order.filled_avg_price else 0
             notional = filled_qty * filled_avg_price if filled_avg_price > 0 else 0
 
+            # Convert order timestamps to EST
+            submitted_at_est = format_est(order.submitted_at) if order.submitted_at else None
+            filled_at_est = format_est(order.filled_at) if order.filled_at else None
+            created_at_est = format_est(order.created_at) if order.created_at else None
+
             order_list.append({
                 "id": str(order.id),
                 "symbol": order.symbol,
@@ -458,9 +520,9 @@ def get_order_history(account_id: str, config: Dict, limit: int = 100) -> List[D
                 "notional": notional,
                 "type": str(order.type.value) if hasattr(order.type, 'value') else str(order.type),
                 "status": str(order.status.value) if hasattr(order.status, 'value') else str(order.status),
-                "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None,
-                "filled_at": order.filled_at.isoformat() if order.filled_at else None,
-                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "submitted_at": submitted_at_est,
+                "filled_at": filled_at_est,
+                "created_at": created_at_est,
             })
 
         # Sort by filled_at descending (most recent first)
@@ -486,7 +548,7 @@ def get_all_order_history() -> Dict[str, Any]:
 
     return {
         "accounts": all_orders,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_est_iso(),
     }
 
 
@@ -553,7 +615,178 @@ def api_account_orders(account_id):
 @app.route('/health')
 def health():
     """Health check endpoint."""
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+    return jsonify({"status": "healthy", "timestamp": now_est_iso()})
+
+
+# Docker container name mapping
+DOCKER_CONTAINERS = {
+    "claude-opus-4.5": "ai-trader-trader-claude-1",
+    "chatgpt-5.2": "ai-trader-trader-chatgpt-1",
+    "gemini-3.0-pro": "ai-trader-trader-gemini-1",
+    "grok-4.2": "ai-trader-trader-grok-1",
+}
+
+
+def parse_trading_session(log_text: str) -> List[Dict[str, Any]]:
+    """Parse trading session logs into structured data."""
+    sessions = []
+
+    # Split by session markers - capture timestamp and optional ET/EST suffix
+    session_pattern = r'📈 Starting Alpaca trading session: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})( ET| EST)?'
+    session_matches = list(re.finditer(session_pattern, log_text))
+
+    for i, match in enumerate(session_matches):
+        start_idx = match.start()
+        end_idx = session_matches[i + 1].start() if i + 1 < len(session_matches) else len(log_text)
+        session_text = log_text[start_idx:end_idx]
+
+        # Extract timestamp - check if already in ET/EST
+        timestamp_str = match.group(1)
+        tz_suffix = match.group(2)  # " ET" or " EST" or None
+
+        try:
+            if tz_suffix:
+                # Timestamp is already in Eastern Time, just format nicely
+                timestamp = f"{timestamp_str} EST"
+            else:
+                # Legacy: assume UTC and convert to EST
+                utc_dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+                timestamp = format_est(utc_dt, "%Y-%m-%d %H:%M:%S EST")
+        except Exception:
+            timestamp = timestamp_str  # Fallback to original if parsing fails
+
+        # Extract session summary
+        summary_match = re.search(
+            r'📊 SESSION SUMMARY.*?Portfolio Value: \$([\d,\.]+).*?Daily P&L: \$([-\d,\.]+)',
+            session_text, re.DOTALL
+        )
+
+        portfolio_value = None
+        daily_pnl = None
+        if summary_match:
+            try:
+                portfolio_value = float(summary_match.group(1).replace(',', ''))
+                daily_pnl = float(summary_match.group(2).replace(',', ''))
+            except:
+                pass
+
+        # Extract the reasoning (everything between session start and FINISH_SIGNAL or SESSION SUMMARY)
+        reasoning = ""
+
+        # Find content between steps completion and FINISH_SIGNAL
+        finish_match = re.search(r'<FINISH_SIGNAL>', session_text)
+        if finish_match:
+            # Get content before FINISH_SIGNAL
+            content_before_finish = session_text[:finish_match.start()]
+
+            # Find the last "Step X/15" or "stop signal" marker
+            step_matches = list(re.finditer(r'(?:🔄 Step \d+/\d+|✅ Received stop signal)', content_before_finish))
+            if step_matches:
+                last_step = step_matches[-1]
+                reasoning = content_before_finish[last_step.end():].strip()
+
+        # Clean up reasoning
+        if reasoning:
+            # Remove ANSI escape codes
+            reasoning = re.sub(r'\x1b\[[0-9;]*m', '', reasoning)
+            # Remove excessive newlines
+            reasoning = re.sub(r'\n{3,}', '\n\n', reasoning)
+            reasoning = reasoning.strip()
+
+        # Determine if any trades were executed
+        trades_executed = "No trades" not in reasoning.lower() and ("buy" in reasoning.lower() or "sell" in reasoning.lower() or "executed" in reasoning.lower())
+
+        sessions.append({
+            "timestamp": timestamp,
+            "portfolio_value": portfolio_value,
+            "daily_pnl": daily_pnl,
+            "reasoning": reasoning[:5000] if reasoning else "No detailed reasoning available",  # Limit size
+            "trades_executed": trades_executed,
+        })
+
+    return sessions
+
+
+def get_docker_logs(container_name: str, lines: int = 2000) -> str:
+    """Fetch logs from a Docker container."""
+    try:
+        result = subprocess.run(
+            ["docker", "logs", "--tail", str(lines), container_name],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        return result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        return ""
+    except Exception as e:
+        print(f"Error fetching logs from {container_name}: {e}")
+        return ""
+
+
+def get_trading_logs(account_id: str, limit: int = 5) -> Dict[str, Any]:
+    """Get parsed trading logs for an account."""
+    container_name = DOCKER_CONTAINERS.get(account_id)
+    if not container_name:
+        return {"error": f"No container mapping for {account_id}"}
+
+    config = ACCOUNTS.get(account_id, {})
+
+    # Fetch raw logs
+    raw_logs = get_docker_logs(container_name)
+    if not raw_logs:
+        return {
+            "account_id": account_id,
+            "name": config.get("display_name", account_id),
+            "color": config.get("color", "#888888"),
+            "sessions": [],
+            "error": "Could not fetch logs from container"
+        }
+
+    # Parse sessions
+    sessions = parse_trading_session(raw_logs)
+
+    # Return most recent sessions
+    return {
+        "account_id": account_id,
+        "name": config.get("display_name", account_id),
+        "color": config.get("color", "#888888"),
+        "sessions": sessions[-limit:] if sessions else [],
+        "total_sessions": len(sessions),
+    }
+
+
+def get_all_trading_logs(limit: int = 5) -> Dict[str, Any]:
+    """Get trading logs for all accounts."""
+    all_logs = {}
+
+    for account_id in ACCOUNTS.keys():
+        logs = get_trading_logs(account_id, limit)
+        all_logs[account_id] = logs
+
+    return {
+        "accounts": all_logs,
+        "timestamp": now_est_iso(),
+    }
+
+
+@app.route('/api/trading-logs')
+def api_trading_logs():
+    """API endpoint for all trading logs."""
+    limit = request.args.get('limit', 5, type=int)
+    return jsonify(get_all_trading_logs(limit))
+
+
+@app.route('/api/account/<account_id>/trading-logs')
+def api_account_trading_logs(account_id):
+    """API endpoint for specific account trading logs."""
+    if account_id not in ACCOUNTS:
+        return jsonify({"status": "error", "error": "Account not found"}), 404
+
+    limit = request.args.get('limit', 10, type=int)
+    logs = get_trading_logs(account_id, limit)
+    return jsonify(logs)
 
 
 if __name__ == '__main__':

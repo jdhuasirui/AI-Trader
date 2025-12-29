@@ -585,6 +585,61 @@ def get_open_prices(
     return results
 
 
+def get_daily_volume(
+    today_date: str, symbols: List[str], merged_path: Optional[str] = None, market: str = "us"
+) -> Dict[str, Optional[float]]:
+    """Get daily trading volume for specified symbols.
+
+    Args:
+        today_date: Date string, format YYYY-MM-DD or YYYY-MM-DD HH:MM:SS.
+        symbols: List of stock symbols to query.
+        merged_path: Optional custom merged.jsonl path.
+        market: Market type, "us" for US stocks, "cn" for A-shares.
+
+    Returns:
+        {symbol_volume: volume or None} dictionary.
+    """
+    wanted = set(symbols)
+    results: Dict[str, Optional[float]] = {}
+
+    merged_file = _resolve_merged_file_path_for_date(today_date, market, merged_path)
+
+    if not merged_file.exists():
+        return results
+
+    with merged_file.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            meta = doc.get("Meta Data", {}) if isinstance(doc, dict) else {}
+            sym = meta.get("2. Symbol")
+            if sym not in wanted:
+                continue
+            # Find Time Series key
+            series = None
+            for key, value in doc.items():
+                if key.startswith("Time Series"):
+                    series = value
+                    break
+            if not isinstance(series, dict):
+                continue
+            bar = series.get(today_date)
+
+            if isinstance(bar, dict):
+                # Try different volume field names
+                volume_val = bar.get("5. volume") or bar.get("volume") or bar.get("6. volume")
+                try:
+                    results[f"{sym}_volume"] = float(volume_val) if volume_val is not None else None
+                except Exception:
+                    results[f"{sym}_volume"] = None
+
+    return results
+
+
 def get_yesterday_open_and_close_price(
     today_date: str, symbols: List[str], merged_path: Optional[str] = None, market: str = "us"
 ) -> Tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:

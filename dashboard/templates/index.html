@@ -70,6 +70,9 @@
                     <span class="pulse-dot w-2 h-2 bg-green-500 rounded-full"></span>
                     <span>Live</span>
                 </div>
+                <div id="currentTime" class="text-sm text-blue-400 font-mono">
+                    --:--:-- EST
+                </div>
                 <div id="lastUpdate" class="text-sm text-slate-400">
                     Last update: --
                 </div>
@@ -130,6 +133,37 @@
             <div class="card rounded-xl p-6 skeleton h-80"></div>
         </div>
 
+        <!-- AI Trading Logs / Reasoning -->
+        <div class="card rounded-xl p-6 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">🧠 AI Trading Reasoning</h2>
+                <button onclick="refreshTradingLogs()" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm">
+                    Refresh Logs
+                </button>
+            </div>
+
+            <!-- Model Tabs for Logs -->
+            <div id="logTabs" class="flex gap-2 mb-4 flex-wrap">
+                <button class="log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white" data-account="claude-opus-4.5" onclick="switchLogTab('claude-opus-4.5')">
+                    Claude
+                </button>
+                <button class="log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-slate-300" data-account="chatgpt-5.2" onclick="switchLogTab('chatgpt-5.2')">
+                    ChatGPT
+                </button>
+                <button class="log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-slate-300" data-account="gemini-3.0-pro" onclick="switchLogTab('gemini-3.0-pro')">
+                    Gemini
+                </button>
+                <button class="log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-slate-300" data-account="grok-4.2" onclick="switchLogTab('grok-4.2')">
+                    Grok
+                </button>
+            </div>
+
+            <!-- Log Content -->
+            <div id="logContent" class="space-y-4">
+                <div class="skeleton h-48 rounded-lg"></div>
+            </div>
+        </div>
+
         <!-- Trading History -->
         <div class="card rounded-xl p-6 mb-8">
             <h2 class="text-xl font-semibold mb-4">Trading History</h2>
@@ -179,6 +213,23 @@
         const REFRESH_INTERVAL = {{ refresh_interval }} * 1000;
         let refreshTimer = null;
 
+        // Update current EST time display
+        function updateCurrentTime() {
+            const now = new Date();
+            const estTime = now.toLocaleString('en-US', {
+                timeZone: 'America/New_York',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            document.getElementById('currentTime').textContent = estTime + ' EST';
+        }
+
+        // Update clock every second
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
+
         function formatCurrency(value) {
             if (value === null || value === undefined) return '$--';
             return new Intl.NumberFormat('en-US', {
@@ -204,8 +255,20 @@
         function formatTime(isoString) {
             if (!isoString || isoString === 'N/A') return 'N/A';
             try {
+                // If the timestamp already contains 'EST', just extract the time part
+                if (isoString.includes('EST')) {
+                    const parts = isoString.split(' ');
+                    return parts.length >= 2 ? parts[1] + ' EST' : isoString;
+                }
                 const date = new Date(isoString);
-                return date.toLocaleTimeString();
+                // Format in Eastern Time
+                return date.toLocaleTimeString('en-US', {
+                    timeZone: 'America/New_York',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                }) + ' EST';
             } catch {
                 return isoString;
             }
@@ -292,11 +355,15 @@
             const positionsHtml = positions.length > 0
                 ? positions.slice(0, 5).map(pos => {
                     const plClass = getPnLClass(pos.unrealized_pl);
+                    const posPct = account.portfolio_value > 0
+                        ? ((pos.market_value / account.portfolio_value) * 100).toFixed(1)
+                        : '0.0';
                     return `
                         <div class="flex justify-between text-sm py-1">
-                            <span class="text-slate-300">${pos.symbol}</span>
-                            <span class="text-slate-400">${pos.qty.toFixed(4)}</span>
-                            <span class="${plClass}">${formatCurrency(pos.unrealized_pl)}</span>
+                            <span class="text-slate-300 w-20">${pos.symbol}</span>
+                            <span class="text-amber-400 w-16 text-right">${posPct}%</span>
+                            <span class="text-slate-400 w-20 text-right">${pos.qty.toFixed(4)}</span>
+                            <span class="${plClass} w-24 text-right">${formatCurrency(pos.unrealized_pl)}</span>
                         </div>
                     `;
                 }).join('')
@@ -338,6 +405,13 @@
 
                     <div class="border-t border-slate-700 pt-3">
                         <div class="text-slate-400 text-xs mb-2">Positions (${account.position_count})</div>
+                        ${positions.length > 0 ? `
+                        <div class="flex justify-between text-xs text-slate-500 mb-1 pb-1 border-b border-slate-700">
+                            <span class="w-20">Symbol</span>
+                            <span class="w-16 text-right">Weight</span>
+                            <span class="w-20 text-right">Qty</span>
+                            <span class="w-24 text-right">P&L</span>
+                        </div>` : ''}
                         <div class="space-y-1">
                             ${positionsHtml}
                         </div>
@@ -595,13 +669,26 @@
         function formatOrderTime(isoString) {
             if (!isoString) return '-';
             try {
+                // If the timestamp already contains 'EST', format it nicely
+                if (isoString.includes('EST')) {
+                    const parts = isoString.split(' ');
+                    if (parts.length >= 2) {
+                        const datePart = parts[0];
+                        const timePart = parts[1];
+                        const [year, month, day] = datePart.split('-');
+                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        return `${months[parseInt(month)-1]} ${parseInt(day)}, ${timePart.substring(0,5)} EST`;
+                    }
+                }
                 const date = new Date(isoString);
+                // Format in Eastern Time
                 return date.toLocaleString('en-US', {
+                    timeZone: 'America/New_York',
                     month: 'short',
                     day: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit'
-                });
+                }) + ' EST';
             } catch {
                 return isoString;
             }
@@ -697,6 +784,164 @@
             loadOrderHistory();
             // Refresh orders every 30 seconds
             setInterval(loadOrderHistory, 30 * 1000);
+        });
+
+        // Trading Logs
+        let tradingLogsData = null;
+        let currentLogTab = 'claude-opus-4.5';
+
+        async function loadTradingLogs() {
+            try {
+                const response = await fetch('/api/trading-logs?limit=5');
+                tradingLogsData = await response.json();
+                updateLogTabs();
+                renderLogContent();
+            } catch (error) {
+                console.error('Failed to load trading logs:', error);
+                document.getElementById('logContent').innerHTML =
+                    '<div class="text-center py-8 text-slate-500">Failed to load trading logs</div>';
+            }
+        }
+
+        function refreshTradingLogs() {
+            document.getElementById('logContent').innerHTML = '<div class="skeleton h-48 rounded-lg"></div>';
+            loadTradingLogs();
+        }
+
+        function updateLogTabs() {
+            if (!tradingLogsData || !tradingLogsData.accounts) return;
+
+            const buttons = document.querySelectorAll('.log-tab-btn');
+            buttons.forEach(btn => {
+                const accountId = btn.dataset.account;
+                const isActive = currentLogTab === accountId;
+                const accountData = tradingLogsData.accounts[accountId];
+
+                if (isActive) {
+                    btn.className = 'log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white';
+                } else {
+                    btn.className = 'log-tab-btn px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 text-slate-300 hover:bg-slate-600';
+                }
+
+                // Add session count
+                if (accountData) {
+                    const sessionCount = accountData.sessions?.length || 0;
+                    const btnText = btn.textContent.split('(')[0].trim();
+                    btn.innerHTML = `${btnText} <span class="text-xs opacity-70">(${sessionCount})</span>`;
+                }
+            });
+        }
+
+        function switchLogTab(accountId) {
+            currentLogTab = accountId;
+            updateLogTabs();
+            renderLogContent();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatMarkdown(text) {
+            if (!text) return '';
+
+            // Escape HTML first
+            let html = escapeHtml(text);
+
+            // Convert markdown-like formatting
+            // Bold: **text** or __text__
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>');
+            html = html.replace(/__(.*?)__/g, '<strong class="text-white">$1</strong>');
+
+            // Headers: ## or ###
+            html = html.replace(/^### (.*?)$/gm, '<h4 class="text-lg font-semibold text-blue-400 mt-4 mb-2">$1</h4>');
+            html = html.replace(/^## (.*?)$/gm, '<h3 class="text-xl font-semibold text-blue-400 mt-4 mb-2">$1</h3>');
+
+            // Lists: - item
+            html = html.replace(/^- (.*?)$/gm, '<li class="ml-4">• $1</li>');
+
+            // Tables (simple)
+            html = html.replace(/\|(.*?)\|/g, '<span class="font-mono text-sm">$1</span>');
+
+            // Line breaks
+            html = html.replace(/\n/g, '<br>');
+
+            // Code blocks
+            html = html.replace(/`(.*?)`/g, '<code class="bg-slate-800 px-1 rounded text-green-400">$1</code>');
+
+            return html;
+        }
+
+        function renderLogContent() {
+            if (!tradingLogsData || !tradingLogsData.accounts) return;
+
+            const container = document.getElementById('logContent');
+            const accountData = tradingLogsData.accounts[currentLogTab];
+
+            if (!accountData || !accountData.sessions || accountData.sessions.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-slate-500">
+                        <p>No trading logs available for ${accountData?.name || currentLogTab}</p>
+                        ${accountData?.error ? `<p class="text-red-400 mt-2">${accountData.error}</p>` : ''}
+                    </div>
+                `;
+                return;
+            }
+
+            // Render sessions (most recent first)
+            const sessions = [...accountData.sessions].reverse();
+
+            const sessionsHtml = sessions.map((session, idx) => {
+                const pnlClass = session.daily_pnl >= 0 ? 'positive' : 'negative';
+                const tradeBadge = session.trades_executed
+                    ? '<span class="px-2 py-0.5 bg-green-600 rounded text-xs ml-2">Trades Executed</span>'
+                    : '<span class="px-2 py-0.5 bg-slate-600 rounded text-xs ml-2">No Trades</span>';
+
+                return `
+                    <div class="bg-slate-800/50 rounded-lg p-4 border-l-4" style="border-color: ${accountData.color}">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-400 text-sm">📅 ${session.timestamp}</span>
+                                ${tradeBadge}
+                            </div>
+                            <div class="text-right">
+                                ${session.portfolio_value ? `<div class="text-sm text-slate-400">Portfolio: ${formatCurrency(session.portfolio_value)}</div>` : ''}
+                                ${session.daily_pnl !== null ? `<div class="text-sm ${pnlClass}">Daily P&L: ${formatCurrency(session.daily_pnl)}</div>` : ''}
+                            </div>
+                        </div>
+                        <div class="prose prose-invert max-w-none text-sm text-slate-300 leading-relaxed overflow-x-auto">
+                            <details ${idx === 0 ? 'open' : ''}>
+                                <summary class="cursor-pointer text-blue-400 hover:text-blue-300 mb-2">
+                                    📝 View Trading Reasoning
+                                </summary>
+                                <div class="mt-2 bg-slate-900/50 rounded p-3 max-h-96 overflow-y-auto">
+                                    ${formatMarkdown(session.reasoning)}
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="w-3 h-3 rounded-full" style="background-color: ${accountData.color}"></span>
+                    <span class="font-semibold">${accountData.name}</span>
+                    <span class="text-slate-500 text-sm">- ${accountData.total_sessions || sessions.length} total sessions</span>
+                </div>
+                <div class="space-y-4">
+                    ${sessionsHtml}
+                </div>
+            `;
+        }
+
+        // Load trading logs on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTradingLogs();
+            // Refresh logs every 2 minutes
+            setInterval(loadTradingLogs, 2 * 60 * 1000);
         });
     </script>
 </body>
