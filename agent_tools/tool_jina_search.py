@@ -19,6 +19,31 @@ from tools.general_tools import get_config_value
 
 logger = logging.getLogger(__name__)
 
+# Simple in-memory cache for recent searches (TTL: 30 minutes)
+_search_cache = {}
+_CACHE_TTL_SECONDS = 1800  # 30 minutes
+
+
+def _get_cached_result(query: str):
+    """Get cached search result if still valid."""
+    if query in _search_cache:
+        cached_time, result = _search_cache[query]
+        if (datetime.now() - cached_time).total_seconds() < _CACHE_TTL_SECONDS:
+            print(f"📦 Using cached result for: {query[:50]}...")
+            return result
+        else:
+            del _search_cache[query]
+    return None
+
+
+def _set_cached_result(query: str, result):
+    """Cache search result."""
+    _search_cache[query] = (datetime.now(), result)
+    # Clean old entries (keep max 50)
+    if len(_search_cache) > 50:
+        oldest_key = min(_search_cache.keys(), key=lambda k: _search_cache[k][0])
+        del _search_cache[oldest_key]
+
 
 def parse_date_to_standard(date_str: str) -> str:
     """
@@ -126,7 +151,9 @@ class WebScrapingJinaTool:
                 "Accept": "application/json",
                 "Authorization": self.api_key,
                 "X-Timeout": "10",
-                "X-With-Generated-Alt": "true",
+                "X-With-Generated-Alt": "false",  # Disable alt text generation to save tokens
+                "X-Return-Format": "text",  # Plain text instead of markdown to reduce size
+                "X-Target-Selector": "article, main, .content, .article-body, .post-content",  # Focus on main content
             }
             response = requests.get(jina_url, headers=headers)
 
@@ -232,6 +259,11 @@ def get_information(query: str) -> str:
         If scraping fails, returns corresponding error information.
     """
     try:
+        # Check cache first
+        cached = _get_cached_result(query)
+        if cached is not None:
+            return cached
+
         tool = WebScrapingJinaTool()
         results = tool(query)
 
@@ -257,18 +289,13 @@ Content: {result['content'][:1000]}...
 
         if not formatted_results:
             return f"⚠️ Search query '{query}' returned empty results."
-        
 
-        # log_file = get_config_value("LOG_FILE")     
-        # signature = get_config_value("SIGNATURE")
-        # log_entry = {
-        #     "signature": signature,
-        #     "new_messages": [{"role": "tool:jinasearch", "content": "\n".join(formatted_results)}]
-        # }
-        # with open(log_file, "a", encoding="utf-8") as f:
-        #     f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        result_str = "\n".join(formatted_results)
 
-        return "\n".join(formatted_results)
+        # Cache the result
+        _set_cached_result(query, result_str)
+
+        return result_str
 
     except Exception as e:
         return f"❌ Search tool execution failed: {str(e)}"

@@ -88,6 +88,16 @@ from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
 
+# Import TradingEngine for integrated trading (optional)
+try:
+    from core import (
+        TradingEngine, TradingEngineConfig, EngineMode,
+        SignalDirection, Regime,
+    )
+    TRADING_ENGINE_AVAILABLE = True
+except ImportError:
+    TRADING_ENGINE_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -174,6 +184,7 @@ class BaseAgentAStock:
         initial_cash: float = 100000.0,  # 默认10万人民币
         init_date: str = "2025-10-09",
         market: str = "cn",  # 接受但忽略此参数，始终使用"cn"
+        trading_engine: Optional[Any] = None,
     ):
         """
         Initialize BaseAgentAStock
@@ -192,6 +203,7 @@ class BaseAgentAStock:
             initial_cash: Initial cash amount (default: 100000.0 RMB)
             init_date: Initialization date
             market: Market type (accepted for compatibility, but always uses "cn")
+            trading_engine: Optional TradingEngine instance for integrated trading
         """
         self.signature = signature
         self.basemodel = basemodel
@@ -234,6 +246,12 @@ class BaseAgentAStock:
         # Data paths
         self.data_path = os.path.join(self.base_log_path, self.signature)
         self.position_file = os.path.join(self.data_path, "position", "position.jsonl")
+
+        # Trading Engine integration (optional)
+        self.trading_engine = trading_engine
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            self.trading_engine.register_model(self.signature)
+            print(f"✅ A-Stock Agent {self.signature} registered with TradingEngine")
 
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         """Get default MCP configuration"""

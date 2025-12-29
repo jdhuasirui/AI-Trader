@@ -121,8 +121,17 @@ async def run_single_session(config: dict, model_name: str = None):
     if not api_key and model_config.get("openai_api_key_env"):
         api_key = os.getenv(model_config["openai_api_key_env"])
 
-    # Get symbols - support both stock_symbols and crypto_symbols
-    symbols = config.get("stock_symbols") or config.get("crypto_symbols")
+    # Get symbols - support both stock_symbols and crypto_symbols (can combine both!)
+    stock_symbols = config.get("stock_symbols", [])
+    crypto_symbols = config.get("crypto_symbols", [])
+    symbols = []
+    if stock_symbols:
+        symbols.extend(stock_symbols)
+    if crypto_symbols:
+        symbols.extend(crypto_symbols)
+    market = config.get("market", "us")
+    if stock_symbols and crypto_symbols:
+        market = "hybrid"
 
     agent = AlpacaAgent(
         signature=model_config["signature"],
@@ -338,8 +347,17 @@ async def run_scheduled(config: dict, model_name: str = None):
     if not api_key and model_config.get("openai_api_key_env"):
         api_key = os.getenv(model_config["openai_api_key_env"])
 
-    # Get symbols - support both stock_symbols and crypto_symbols
-    symbols = config.get("stock_symbols") or config.get("crypto_symbols")
+    # Get symbols - support both stock_symbols and crypto_symbols (can combine both!)
+    stock_symbols = config.get("stock_symbols", [])
+    crypto_symbols = config.get("crypto_symbols", [])
+    symbols = []
+    if stock_symbols:
+        symbols.extend(stock_symbols)
+    if crypto_symbols:
+        symbols.extend(crypto_symbols)
+    market = config.get("market", "us")
+    if stock_symbols and crypto_symbols:
+        market = "hybrid"
 
     agent = AlpacaAgent(
         signature=model_config["signature"],

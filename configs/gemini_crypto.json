@@ -1,14 +1,14 @@
 {
     "agent_type": "AlpacaAgent",
-    "market": "crypto",
+    "market": "hybrid",
     "trading_mode": "paper",
-    "description": "Gemini 3.0 Pro - Crypto Trading (24/7)",
+    "description": "Gemini 3 Pro - Stocks + Crypto Trading (Hybrid)",
 
     "models": [
         {
-            "name": "gemini-3.0-pro",
+            "name": "gemini-3-pro",
             "basemodel": "gemini-3-pro-preview",
-            "signature": "gemini-3.0-pro-crypto",
+            "signature": "gemini-3-pro-crypto",
             "enabled": true,
             "openai_api_key_env": "GEMINI_API_KEY"
         }
@@ -32,6 +32,11 @@
         "max_order_value": 10000,
         "daily_loss_limit": 1000
     },
+
+    "stock_symbols": [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+        "META", "TSLA", "AVGO", "AMD", "NFLX"
+    ],
 
     "crypto_symbols": [
         "BTC/USD",

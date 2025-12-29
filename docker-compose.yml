@@ -51,6 +51,59 @@ services:
       - "8011:8011"
     restart: unless-stopped
 
+  # Alpaca News Service (NEW)
+  alpaca-news:
+    build: .
+    command: python agent_tools/tool_news_alpaca.py
+    environment:
+      - ALPACA_NEWS_PORT=8012
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "8012:8012"
+    restart: unless-stopped
+
+  # Trade Flow Analysis Service (NEW)
+  trade-flow:
+    build: .
+    command: python agent_tools/tool_trade_flow.py
+    environment:
+      - TRADE_FLOW_PORT=8013
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+    ports:
+      - "8013:8013"
+    restart: unless-stopped
+
+  # Corporate Actions Service (NEW)
+  corporate-actions:
+    build: .
+    command: python agent_tools/tool_corporate_actions.py
+    environment:
+      - CORPORATE_ACTIONS_PORT=8014
+      - MCP_HOST=0.0.0.0
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+    ports:
+      - "8014:8014"
+    restart: unless-stopped
+
+  # On-Chain Metrics Service (NEW)
+  onchain:
+    build: .
+    command: python agent_tools/tool_onchain_metrics.py
+    environment:
+      - ONCHAIN_PORT=8015
+      - MCP_HOST=0.0.0.0
+      - WHALE_ALERT_API_KEY=${WHALE_ALERT_API_KEY:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    ports:
+      - "8015:8015"
+    restart: unless-stopped
+
   # Claude Opus 4.5 - Dedicated Crypto Trader (24/7)
   trader-claude:
     build: .
@@ -67,10 +120,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price-claude
       - MCP_TRADE_HOST=alpaca-trade-claude
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -79,6 +140,10 @@ services:
       - mcp-search
       - alpaca-price-claude
       - alpaca-trade-claude
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     restart: unless-stopped
     profiles:
       - claude
@@ -124,10 +189,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price-chatgpt
       - MCP_TRADE_HOST=alpaca-trade-chatgpt
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -136,6 +209,10 @@ services:
       - mcp-search
       - alpaca-price-chatgpt
       - alpaca-trade-chatgpt
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     restart: unless-stopped
     profiles:
       - chatgpt
@@ -179,10 +256,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price-gemini
       - MCP_TRADE_HOST=alpaca-trade-gemini
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -191,6 +276,10 @@ services:
       - mcp-search
       - alpaca-price-gemini
       - alpaca-trade-gemini
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     restart: unless-stopped
     profiles:
       - gemini
@@ -234,10 +323,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price-grok
       - MCP_TRADE_HOST=alpaca-trade-grok
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -246,6 +343,10 @@ services:
       - mcp-search
       - alpaca-price-grok
       - alpaca-trade-grok
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     restart: unless-stopped
     profiles:
       - grok
@@ -294,10 +395,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price
       - MCP_TRADE_HOST=alpaca-trade
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -306,6 +415,10 @@ services:
       - mcp-search
       - alpaca-price
       - alpaca-trade
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     profiles:
       - compare
 
@@ -327,10 +440,18 @@ services:
       - MCP_SEARCH_HOST=mcp-search
       - MCP_PRICE_HOST=alpaca-price
       - MCP_TRADE_HOST=alpaca-trade
+      - MCP_NEWS_HOST=alpaca-news
+      - MCP_TRADE_FLOW_HOST=trade-flow
+      - MCP_CORP_ACTIONS_HOST=corporate-actions
+      - MCP_ONCHAIN_HOST=onchain
       - MATH_HTTP_PORT=8000
       - SEARCH_HTTP_PORT=8001
       - ALPACA_PRICE_PORT=8010
       - ALPACA_TRADE_PORT=8011
+      - ALPACA_NEWS_PORT=8012
+      - TRADE_FLOW_PORT=8013
+      - CORPORATE_ACTIONS_PORT=8014
+      - ONCHAIN_PORT=8015
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -339,6 +460,10 @@ services:
       - mcp-search
       - alpaca-price
       - alpaca-trade
+      - alpaca-news
+      - trade-flow
+      - corporate-actions
+      - onchain
     profiles:
       - single
 
@@ -369,6 +494,7 @@ services:
       - "8888:8888"
     volumes:
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
 networks:

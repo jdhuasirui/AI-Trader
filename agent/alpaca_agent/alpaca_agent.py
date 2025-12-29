@@ -7,14 +7,21 @@ Key differences from BaseAgent:
 2. Executes trades through Alpaca API instead of local file simulation
 3. Runs in real-time with actual market hours
 4. Gets positions from Alpaca account instead of local files
+
+Enhanced with core infrastructure:
+- Risk engine with circuit breakers and position limits
+- Order manager with state machine
+- LLM validator for output validation
 """
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -32,6 +39,21 @@ from agent_tools.alpaca_client import AlpacaClient, AlpacaClientError, get_alpac
 from prompts.agent_prompt_alpaca import STOP_SIGNAL, get_alpaca_system_prompt
 from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
 from tools.trade_logger import TradeLogger, get_trade_logger
+
+# Import core infrastructure modules
+try:
+    from core import (
+        RiskEngine, RiskConfig, RiskState,
+        OrderManager, OrderStateMachine, OrderState, RetryConfig,
+        LLMValidator, ValidationResult,
+        MetricsCollector, AuditLogger, AlertManager,
+        Portfolio, Position, Signal, SignalDirection,
+        OrderIntent, OrderType, RiskAction,
+    )
+    CORE_MODULES_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Core modules not available: {e}. Running in basic mode.")
+    CORE_MODULES_AVAILABLE = False
 
 # Best-effort import for console callback handler
 try:
@@ -159,6 +181,173 @@ class AlpacaAgent(BaseAgent):
         self.trade_logger = get_trade_logger(log_path, signature)
         self.session_start_equity: float = 0.0
 
+        # Initialize core infrastructure if available
+        self._risk_engine: Optional[Any] = None
+        self._order_manager: Optional[Any] = None
+        self._llm_validator: Optional[Any] = None
+        self._metrics_collector: Optional[Any] = None
+        self._audit_logger: Optional[Any] = None
+
+        if CORE_MODULES_AVAILABLE:
+            self._init_core_infrastructure()
+
+    def _init_core_infrastructure(self) -> None:
+        """Initialize core infrastructure modules (risk engine, order manager, etc.)"""
+        if not CORE_MODULES_AVAILABLE:
+            return
+
+        # Initialize risk engine with Alpaca-appropriate config
+        risk_config = RiskConfig(
+            max_single_position=self.max_position_pct,  # Max single position
+            max_sector_exposure=0.40,  # 40% max sector concentration
+            min_cash_buffer=0.05,  # 5% minimum cash buffer
+            correlation_threshold=0.7,
+            # Circuit breaker thresholds (daily loss limits)
+            daily_loss_reduce_size=-0.02,  # -2% -> reduce sizes
+            daily_loss_halt_new=-0.05,  # -5% -> halt new positions
+            daily_loss_force_liquidate=-0.10,  # -10% -> force liquidate
+        )
+        self._risk_engine = RiskEngine(risk_config)
+
+        # Initialize order manager with retry config
+        retry_config = RetryConfig(
+            max_retries=3,
+            initial_delay_ms=1000,  # 1 second initial delay
+            max_delay_ms=30000,  # 30 seconds max delay
+            exponential_base=2.0,  # Exponential backoff multiplier
+        )
+        self._order_manager = OrderManager(retry_config=retry_config)
+
+        # Initialize LLM validator
+        self._llm_validator = LLMValidator(
+            tolerance_pct=5.0,  # 5% tolerance for price claims
+            require_reasoning=True,
+            min_reasoning_length=20,
+        )
+
+        # Initialize observability
+        log_path = Path(self.data_path)
+        self._metrics_collector = MetricsCollector()
+        self._audit_logger = AuditLogger(log_path / "audit")
+
+        logging.info(f"Core infrastructure initialized for {self.signature}")
+
+    def validate_llm_output(self, llm_output: str) -> Optional[Dict]:
+        """
+        Validate LLM output using the LLM validator.
+
+        Returns validated/corrected output dict or None if invalid.
+        """
+        if not CORE_MODULES_AVAILABLE or self._llm_validator is None:
+            return None
+
+        result = self._llm_validator.validate(llm_output)
+
+        if not result.is_valid:
+            logging.warning(f"LLM output validation failed: {result.errors}")
+            return None
+
+        if result.warnings:
+            logging.info(f"LLM output validation warnings: {result.warnings}")
+
+        return result.corrected_output
+
+    def check_risk_limits(self, symbol: str, quantity: int, side: str, price: float) -> Dict[str, Any]:
+        """
+        Check if a proposed order passes risk limits.
+
+        Args:
+            symbol: Stock symbol
+            quantity: Number of shares
+            side: 'buy' or 'sell'
+            price: Expected execution price
+
+        Returns:
+            Dict with 'allowed' bool and optional 'reason' if blocked
+        """
+        if not CORE_MODULES_AVAILABLE or self._risk_engine is None:
+            return {"allowed": True}
+
+        try:
+            # Get current portfolio state from Alpaca
+            account = self.alpaca_client.get_account()
+            positions = self.alpaca_client.get_positions()
+
+            # Build portfolio object
+            portfolio = Portfolio(
+                cash=account['cash'],
+                positions={
+                    sym: Position(
+                        symbol=sym,
+                        quantity=pos['qty'],
+                        avg_price=pos['avg_entry_price'],
+                        current_price=pos['current_price'],
+                        market_value=pos['market_value'],
+                    )
+                    for sym, pos in positions.items()
+                },
+                total_value=account['portfolio_value'],
+            )
+
+            # Create order intent
+            order_intent = OrderIntent(
+                symbol=symbol,
+                quantity=quantity,
+                side=side.upper(),
+                order_type=OrderType.MARKET,
+                limit_price=price if side.upper() == "BUY" else None,
+            )
+
+            # Validate against risk engine
+            action, reason = self._risk_engine.validate_order(order_intent, portfolio)
+
+            if action == RiskAction.BLOCK:
+                return {"allowed": False, "reason": reason}
+            elif action == RiskAction.REDUCE:
+                # Risk engine suggests reducing size
+                return {"allowed": True, "warning": reason}
+            else:
+                return {"allowed": True}
+
+        except Exception as e:
+            logging.error(f"Risk check failed: {e}")
+            return {"allowed": True}  # Fail open for now
+
+    def record_trade_metrics(self, trade_data: Dict) -> None:
+        """Record trade metrics for observability."""
+        if not CORE_MODULES_AVAILABLE or self._metrics_collector is None:
+            return
+
+        try:
+            self._metrics_collector.record_trade(
+                symbol=trade_data.get("symbol"),
+                side=trade_data.get("side"),
+                quantity=trade_data.get("quantity"),
+                price=trade_data.get("price"),
+                slippage=trade_data.get("slippage", 0),
+            )
+        except Exception as e:
+            logging.error(f"Failed to record trade metrics: {e}")
+
+    def get_risk_state(self) -> Optional[Dict]:
+        """Get current risk state summary."""
+        if not CORE_MODULES_AVAILABLE or self._risk_engine is None:
+            return None
+
+        try:
+            state = self._risk_engine.get_state()
+            return {
+                "circuit_breaker_level": state.circuit_breaker_level,
+                "is_trading_halted": state.is_halted,
+                "daily_pnl": state.daily_pnl,
+                "daily_pnl_pct": state.daily_pnl_pct,
+                "positions_count": len(state.positions),
+                "largest_position_pct": state.largest_position_pct,
+            }
+        except Exception as e:
+            logging.error(f"Failed to get risk state: {e}")
+            return None
+
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         """Get Alpaca-specific MCP configuration"""
         # Support both localhost (local dev) and Docker service names
@@ -166,6 +355,10 @@ class AlpacaAgent(BaseAgent):
         search_host = os.getenv('MCP_SEARCH_HOST', 'localhost')
         price_host = os.getenv('MCP_PRICE_HOST', 'localhost')
         trade_host = os.getenv('MCP_TRADE_HOST', 'localhost')
+        news_host = os.getenv('MCP_NEWS_HOST', 'localhost')
+        trade_flow_host = os.getenv('MCP_TRADE_FLOW_HOST', 'localhost')
+        corp_actions_host = os.getenv('MCP_CORP_ACTIONS_HOST', 'localhost')
+        onchain_host = os.getenv('MCP_ONCHAIN_HOST', 'localhost')
 
         return {
             "math": {
@@ -183,6 +376,22 @@ class AlpacaAgent(BaseAgent):
             "alpaca_trade": {
                 "transport": "streamable_http",
                 "url": f"http://{trade_host}:{os.getenv('ALPACA_TRADE_PORT', '8011')}/mcp",
+            },
+            "alpaca_news": {
+                "transport": "streamable_http",
+                "url": f"http://{news_host}:{os.getenv('ALPACA_NEWS_PORT', '8012')}/mcp",
+            },
+            "trade_flow": {
+                "transport": "streamable_http",
+                "url": f"http://{trade_flow_host}:{os.getenv('TRADE_FLOW_PORT', '8013')}/mcp",
+            },
+            "corporate_actions": {
+                "transport": "streamable_http",
+                "url": f"http://{corp_actions_host}:{os.getenv('CORPORATE_ACTIONS_PORT', '8014')}/mcp",
+            },
+            "onchain": {
+                "transport": "streamable_http",
+                "url": f"http://{onchain_host}:{os.getenv('ONCHAIN_PORT', '8015')}/mcp",
             },
         }
 
@@ -311,10 +520,11 @@ class AlpacaAgent(BaseAgent):
         Args:
             today_date: Optional date string. If None, uses current time.
         """
-        # Use current time if not specified
+        # Use current time if not specified (always use Eastern Time for US markets)
         if today_date is None:
-            now = datetime.now()
-            today_date = now.strftime("%Y-%m-%d %H:%M:%S")
+            eastern = ZoneInfo("America/New_York")
+            now = datetime.now(eastern)
+            today_date = now.strftime("%Y-%m-%d %H:%M:%S") + " ET"
 
         print(f"📈 Starting Alpaca trading session: {today_date}")
 
@@ -388,8 +598,8 @@ class AlpacaAgent(BaseAgent):
                 # Extract agent response
                 agent_response = extract_conversation(response, "final")
 
-                # Check stop signal
-                if STOP_SIGNAL in agent_response:
+                # Check stop signal (handle None response)
+                if agent_response and STOP_SIGNAL in agent_response:
                     print("✅ Received stop signal, trading session ended")
                     print(agent_response)
                     self._log_message(log_file, [{"role": "assistant", "content": agent_response}])
@@ -405,9 +615,9 @@ class AlpacaAgent(BaseAgent):
                     return str(content) if content else ""
                 tool_response = "\n".join([get_content_str(msg) for msg in tool_msgs])
 
-                # Prepare new messages
+                # Prepare new messages (handle None response)
                 new_messages = [
-                    {"role": "assistant", "content": agent_response},
+                    {"role": "assistant", "content": agent_response or ""},
                     {"role": "user", "content": f"Tool results: {tool_response}"},
                 ]
 
@@ -442,6 +652,15 @@ class AlpacaAgent(BaseAgent):
             print(f"Cash: ${account['cash']:,.2f}")
             print(f"Buying Power: ${account['buying_power']:,.2f}")
             print(f"Daily P&L: ${account['equity'] - account['last_equity']:,.2f}")
+
+            # Print risk state if available
+            risk_state = self.get_risk_state()
+            if risk_state:
+                print(f"\n🛡️ Risk Status:")
+                print(f"   Circuit Breaker Level: {risk_state['circuit_breaker_level']}")
+                if risk_state['is_trading_halted']:
+                    print(f"   ⚠️ TRADING HALTED")
+                print(f"   Largest Position: {risk_state['largest_position_pct']:.1%}")
 
             if positions:
                 print(f"\nPositions ({len(positions)}):")

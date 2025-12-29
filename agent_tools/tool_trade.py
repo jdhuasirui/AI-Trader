@@ -16,9 +16,96 @@ from tools.general_tools import get_config_value, write_config_value
 from tools.price_tools import (get_latest_position, get_open_prices,
                                get_yesterday_date,
                                get_yesterday_open_and_close_price,
-                               get_yesterday_profit)
+                               get_yesterday_profit,
+                               get_daily_volume)
 
 mcp = FastMCP("TradeTools")
+
+
+# Slippage modeling configuration
+SLIPPAGE_CONFIG = {
+    "enabled": True,  # Enable slippage modeling
+    "coefficient": 0.1,  # k in slippage = k * (order_qty / daily_volume)
+    "min_slippage_bps": 1.0,  # Minimum 0.01% slippage
+    "max_slippage_bps": 50.0,  # Maximum 0.5% slippage
+    "base_spread_bps": 2.0,  # Base bid-ask spread in basis points
+}
+
+
+def calculate_slippage(
+    order_qty: float,
+    daily_volume: float,
+    is_buy: bool,
+    config: Optional[Dict] = None,
+) -> float:
+    """
+    Calculate slippage for an order using linear market impact model.
+
+    Slippage = k * (order_qty / daily_volume) + base_spread
+
+    Args:
+        order_qty: Number of shares to trade
+        daily_volume: Average daily volume for the stock
+        is_buy: True for buy orders, False for sell orders
+        config: Optional slippage configuration override
+
+    Returns:
+        Slippage as a decimal (e.g., 0.001 for 0.1% slippage)
+        Positive for buys (pay more), negative for sells (receive less)
+    """
+    cfg = config or SLIPPAGE_CONFIG
+
+    if not cfg.get("enabled", True):
+        return 0.0
+
+    if daily_volume <= 0:
+        # No volume data, use max slippage
+        slippage_bps = cfg.get("max_slippage_bps", 50.0)
+    else:
+        # Linear impact model
+        volume_ratio = order_qty / daily_volume
+        impact_bps = cfg.get("coefficient", 0.1) * volume_ratio * 10000
+
+        # Add base spread (half the spread for each side)
+        spread_bps = cfg.get("base_spread_bps", 2.0) / 2
+
+        slippage_bps = impact_bps + spread_bps
+
+        # Clamp to bounds
+        min_bps = cfg.get("min_slippage_bps", 1.0)
+        max_bps = cfg.get("max_slippage_bps", 50.0)
+        slippage_bps = max(min_bps, min(slippage_bps, max_bps))
+
+    # Convert to decimal
+    slippage = slippage_bps / 10000
+
+    # Apply direction (positive for buys, negative for sells)
+    return slippage if is_buy else -slippage
+
+
+def apply_slippage_to_price(
+    base_price: float,
+    order_qty: float,
+    daily_volume: float,
+    is_buy: bool,
+) -> tuple:
+    """
+    Apply slippage to get the effective execution price.
+
+    Args:
+        base_price: The base price (e.g., open price)
+        order_qty: Number of shares
+        daily_volume: Average daily volume
+        is_buy: True for buy, False for sell
+
+    Returns:
+        Tuple of (effective_price, slippage_pct)
+    """
+    slippage = calculate_slippage(order_qty, daily_volume, is_buy)
+    effective_price = base_price * (1 + slippage)
+    slippage_pct = abs(slippage) * 100
+
+    return effective_price, slippage_pct
 
 def _position_lock(signature: str):
     """Context manager for file-based lock to serialize position updates per signature."""

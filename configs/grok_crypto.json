@@ -1,8 +1,8 @@
 {
     "agent_type": "AlpacaAgent",
-    "market": "crypto",
+    "market": "hybrid",
     "trading_mode": "paper",
-    "description": "Grok 4.2 - Crypto Trading (24/7)",
+    "description": "Grok 4.2 - Stocks + Crypto Trading (Hybrid)",
 
     "models": [
         {
@@ -33,6 +33,11 @@
         "max_order_value": 10000,
         "daily_loss_limit": 1000
     },
+
+    "stock_symbols": [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+        "META", "TSLA", "AVGO", "AMD", "NFLX"
+    ],
 
     "crypto_symbols": [
         "BTC/USD",

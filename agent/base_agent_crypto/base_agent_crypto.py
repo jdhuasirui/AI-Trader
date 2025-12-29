@@ -98,6 +98,16 @@ class DeepSeekChatOpenAI(ChatOpenAI):
 from prompts.agent_prompt_crypto import STOP_SIGNAL, get_agent_system_prompt_crypto
 from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
+
+# Import TradingEngine for integrated trading (optional)
+try:
+    from core import (
+        TradingEngine, TradingEngineConfig, EngineMode,
+        SignalDirection, Regime,
+    )
+    TRADING_ENGINE_AVAILABLE = True
+except ImportError:
+    TRADING_ENGINE_AVAILABLE = False
 from tools.price_tools import add_no_trade_record
 
 # Load environment variables
@@ -151,6 +161,7 @@ class BaseAgentCrypto:
         initial_cash: float = 10000.0,
         init_date: str = "2025-10-13",
         market: str = "crypto",
+        trading_engine: Optional[Any] = None,
     ):
         """
         Initialize BaseAgentCrypto
@@ -169,6 +180,7 @@ class BaseAgentCrypto:
             initial_cash: Initial cash amount in USDT
             init_date: Initialization date
             market: Market type, hardcoded to "crypto"
+            trading_engine: Optional TradingEngine instance for integrated trading
         """
         self.signature = signature
         self.basemodel = basemodel
@@ -211,6 +223,12 @@ class BaseAgentCrypto:
         # Data paths
         self.data_path = os.path.join(self.base_log_path, self.signature)
         self.position_file = os.path.join(self.data_path, "position", "position.jsonl")
+
+        # Trading Engine integration (optional)
+        self.trading_engine = trading_engine
+        if self.trading_engine and TRADING_ENGINE_AVAILABLE:
+            self.trading_engine.register_model(self.signature)
+            print(f"✅ Crypto Agent {self.signature} registered with TradingEngine")
 
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         """Get default MCP configuration for crypto trading"""

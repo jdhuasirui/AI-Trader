@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,27 @@ load_dotenv()
 from prompts.agent_prompt import all_nasdaq_100_symbols
 # Import tools and prompts
 from tools.general_tools import get_config_value, write_config_value
+
+# Import core infrastructure for multi-model signal aggregation
+try:
+    from core import (
+        SignalAggregator, AggregatorConfig, ConfidenceCalibrator,
+        Signal, SignalDirection, Regime,
+        LLMValidator,
+        # NEW: Trading Engine with integrated components
+        TradingEngine, TradingEngineConfig, EngineMode,
+        create_trading_engine,
+        # NEW: Advanced components
+        DriftDetector, DriftConfig,
+        RiskEngine, RiskConfig,
+        AdvancedCalibrator, CalibrationConfig,
+    )
+    SIGNAL_AGGREGATION_AVAILABLE = True
+    TRADING_ENGINE_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Signal aggregation modules not available: {e}")
+    SIGNAL_AGGREGATION_AVAILABLE = False
+    TRADING_ENGINE_AVAILABLE = False
 
 # Agent class mapping table - for dynamic import and instantiation
 AGENT_REGISTRY = {
@@ -330,17 +352,227 @@ async def main(config_path=None):
     print("🎉 All models processing completed!")
 
 
+async def main_multi_model_fusion(config_path=None):
+    """
+    Run multi-model signal fusion mode with integrated TradingEngine.
+
+    This mode runs multiple LLM agents and aggregates their signals using
+    the TradingEngine which integrates:
+    - SignalAggregator for consensus-based trading decisions
+    - DriftDetector for model health monitoring
+    - ConfidenceCalibrator for LLM output calibration
+    - RiskEngine for ATR-based position sizing
+    - SlippageSimulator for execution cost estimation
+
+    Args:
+        config_path: Configuration file path
+    """
+    if not SIGNAL_AGGREGATION_AVAILABLE:
+        print("❌ Signal aggregation modules not available. Install core dependencies.")
+        exit(1)
+
+    # Load configuration
+    config = load_config(config_path)
+
+    # Check if fusion mode is enabled
+    fusion_config = config.get("fusion_config", {})
+    if not fusion_config.get("enabled", False):
+        print("⚠️ Fusion mode not enabled in config. Running standard mode.")
+        await main(config_path)
+        return
+
+    print("🔀 Running in Multi-Model Signal Fusion Mode with TradingEngine")
+
+    # Get enabled models
+    enabled_models = [model for model in config["models"] if model.get("enabled", True)]
+    if len(enabled_models) < 2:
+        print("⚠️ Fusion mode requires at least 2 enabled models. Running standard mode.")
+        await main(config_path)
+        return
+
+    # Get agent and market config
+    agent_config = config.get("agent_config", {})
+    log_config = config.get("log_config", {})
+    market = config.get("market", "us")
+    agent_type = config.get("agent_type", "BaseAgent")
+
+    # Auto-detect market from agent_type
+    if agent_type in ("BaseAgentAStock", "BaseAgentAStock_Hour"):
+        market = "cn"
+    elif agent_type == "BaseAgentCrypto":
+        market = "crypto"
+
+    # Initialize TradingEngine with integrated components
+    if TRADING_ENGINE_AVAILABLE:
+        # Create engine configuration
+        engine_config = TradingEngineConfig(
+            mode=EngineMode.PAPER,
+            initial_capital=agent_config.get("initial_cash", 100000.0),
+            drift_enabled=fusion_config.get("drift_detection", True),
+            calibration_enabled=fusion_config.get("calibration", True),
+            risk_enabled=fusion_config.get("risk_management", True),
+            slippage_enabled=fusion_config.get("slippage_simulation", True),
+            aggregation_enabled=True,
+            log_dir=log_config.get("log_path", "./data/agent_data") + "/engine_logs",
+        )
+
+        # Configure aggregator
+        engine_config.aggregator_config = AggregatorConfig(
+            min_models_for_consensus=fusion_config.get("min_models", 2),
+            consensus_threshold=fusion_config.get("consensus_threshold", 0.6),
+            use_regime_weighting=fusion_config.get("regime_aware", True),
+            default_regime=Regime.RANGING,
+        )
+
+        # Configure risk engine with ATR-based sizing
+        engine_config.risk_config = RiskConfig(
+            max_position_pct=0.20,  # 20% max per position
+            max_portfolio_risk=0.02,  # 2% portfolio risk per trade
+            atr_position_risk_pct=0.01,  # 1% risk per ATR
+            atr_multiplier=2.0,
+            kelly_fraction=0.25,  # 1/4 Kelly
+            max_kelly_position=0.20,
+            drawdown_reduce_25pct=-0.05,
+            drawdown_reduce_50pct=-0.10,
+            drawdown_halt_new=-0.15,
+            drawdown_stop_all=-0.20,
+        )
+
+        # Configure drift detection
+        engine_config.drift_config = DriftConfig(
+            adwin_delta=0.002,
+            page_hinkley_threshold=50.0,
+            setar_threshold=2.0,
+            min_samples=30,
+            weight_decay_on_drift=0.5,
+        )
+
+        # Create and initialize engine
+        trading_engine = TradingEngine(engine_config)
+        trading_engine.initialize()
+        print("✅ TradingEngine initialized with all components")
+    else:
+        # Fallback to legacy mode
+        trading_engine = None
+        aggregator_config = AggregatorConfig(
+            min_models_for_consensus=fusion_config.get("min_models", 2),
+            consensus_threshold=fusion_config.get("consensus_threshold", 0.6),
+            use_regime_weighting=fusion_config.get("regime_aware", True),
+            default_regime=Regime.RANGING,
+        )
+        signal_aggregator = SignalAggregator(aggregator_config)
+        print("⚠️ TradingEngine not available, using legacy SignalAggregator")
+
+    # Initialize LLM validator
+    llm_validator = LLMValidator(
+        tolerance_pct=5.0,
+        require_reasoning=True,
+        min_reasoning_length=20,
+    )
+
+    # Get date range
+    INIT_DATE = config["date_range"]["init_date"]
+    END_DATE = config["date_range"]["end_date"]
+
+    print(f"📅 Date range: {INIT_DATE} to {END_DATE}")
+    print(f"🤖 Models for fusion: {[m.get('name', m.get('signature')) for m in enabled_models]}")
+    if trading_engine:
+        print(f"⚙️ Engine config: drift={engine_config.drift_enabled}, "
+              f"calibration={engine_config.calibration_enabled}, "
+              f"risk={engine_config.risk_enabled}")
+
+    # Initialize all agents
+    agents = []
+    AgentClass = get_agent_class(agent_type)
+
+    for model_config in enabled_models:
+        signature = model_config.get("signature")
+        basemodel = model_config.get("basemodel")
+
+        if not basemodel or not signature:
+            continue
+
+        try:
+            agent = AgentClass(
+                signature=signature,
+                basemodel=basemodel,
+                log_path=log_config.get("log_path", "./data/agent_data"),
+                max_steps=agent_config.get("max_steps", 10),
+                initial_cash=agent_config.get("initial_cash", 10000.0),
+                init_date=INIT_DATE,
+                openai_base_url=model_config.get("openai_base_url"),
+                openai_api_key=model_config.get("openai_api_key"),
+            )
+            await agent.initialize()
+            agents.append((signature, agent))
+
+            # Register model with trading engine
+            if trading_engine:
+                trading_engine.register_model(signature)
+
+            print(f"✅ Initialized agent: {signature}")
+        except Exception as e:
+            print(f"❌ Failed to initialize {signature}: {e}")
+
+    if len(agents) < 2:
+        print("❌ Need at least 2 agents for fusion mode")
+        exit(1)
+
+    print(f"\n🔀 Signal fusion ready with {len(agents)} agents")
+    print("=" * 60)
+
+    # Display engine and model stats
+    print("\n📊 Multi-Model Fusion Summary:")
+    print(f"   Agents: {[name for name, _ in agents]}")
+
+    if trading_engine:
+        engine_stats = trading_engine.get_engine_stats()
+        print(f"   Engine mode: {engine_stats['mode']}")
+        print(f"   Portfolio value: ${engine_stats['portfolio_value']:,.2f}")
+        print(f"   Registered models: {engine_stats['model_count']}")
+
+        for name, _ in agents:
+            model_stats = trading_engine.get_model_stats(name)
+            print(f"   - {name}: healthy={model_stats.get('is_healthy', True)}, "
+                  f"weight={model_stats.get('weight_adjustment', 1.0):.2f}")
+    else:
+        print(f"   Aggregator: {aggregator_config}")
+
+    print(f"   Validator stats: {llm_validator.get_validation_stats()}")
+
+    print("\n🎉 Multi-model fusion with TradingEngine setup complete!")
+    print("   Components integrated:")
+    print("   - DriftDetector (ADWIN + Page-Hinkley) for model health monitoring")
+    print("   - ConfidenceCalibrator (Platt/Isotonic) for LLM output calibration")
+    print("   - RiskEngine with ATR-based position sizing and drawdown protection")
+    print("   - SlippageSimulator for execution cost estimation")
+    print("   - SignalAggregator for multi-model consensus")
+
+
 if __name__ == "__main__":
     import sys
 
     # Support specifying configuration file through command line arguments
-    # Usage: python livebaseagent_config.py [config_path]
-    # Example: python livebaseagent_config.py configs/my_config.json
-    config_path = sys.argv[1] if len(sys.argv) > 1 else None
+    # Usage: python main.py [config_path] [--fusion]
+    # Example: python main.py configs/my_config.json
+    # Example: python main.py configs/my_config.json --fusion
+
+    config_path = None
+    fusion_mode = False
+
+    for arg in sys.argv[1:]:
+        if arg == "--fusion":
+            fusion_mode = True
+        elif not arg.startswith("-"):
+            config_path = arg
 
     if config_path:
         print(f"📄 Using specified configuration file: {config_path}")
     else:
         print(f"📄 Using default configuration file: configs/default_config.json")
 
-    asyncio.run(main(config_path))
+    if fusion_mode:
+        print("🔀 Running in multi-model fusion mode")
+        asyncio.run(main_multi_model_fusion(config_path))
+    else:
+        asyncio.run(main(config_path))
